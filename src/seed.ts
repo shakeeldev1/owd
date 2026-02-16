@@ -1,0 +1,523 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+
+const MONGODB_URI = 'mongodb://localhost:27017/alfursan-oud';
+
+// Schemas (inline for standalone script)
+const UserSchema = new mongoose.Schema(
+  {
+    fullName: String,
+    email: { type: String, unique: true, lowercase: true },
+    phone: String,
+    password: String,
+    avatar: String,
+    role: { type: String, enum: ['user', 'admin'], default: 'user' },
+    isVerified: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
+    loyaltyTier: { type: String, enum: ['bronze', 'silver', 'gold'], default: 'bronze' },
+    totalSpent: { type: Number, default: 0 },
+    totalOrders: { type: Number, default: 0 },
+  },
+  { timestamps: true },
+);
+
+const CategorySchema = new mongoose.Schema(
+  {
+    name: String,
+    nameAr: String,
+    description: String,
+    descriptionAr: String,
+    image: String,
+    slug: { type: String, unique: true },
+    productCount: { type: Number, default: 0 },
+    featured: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
+  },
+  { timestamps: true },
+);
+
+const ProductSchema = new mongoose.Schema(
+  {
+    name: String,
+    nameAr: String,
+    description: String,
+    descriptionAr: String,
+    price: Number,
+    originalPrice: Number,
+    image: String,
+    images: [String],
+    slug: { type: String, unique: true },
+    sku: String,
+    category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category' },
+    categoryName: String,
+    rating: { type: Number, default: 0 },
+    reviews: { type: Number, default: 0 },
+    badge: String,
+    badgeAr: String,
+    isNew: { type: Boolean, default: false },
+    isBestseller: { type: Boolean, default: false },
+    isLimitedEdition: { type: Boolean, default: false },
+    isFeatured: { type: Boolean, default: false },
+    stock: { type: Number, default: 50 },
+    sales: { type: Number, default: 0 },
+    status: { type: String, enum: ['active', 'draft', 'archived'], default: 'active' },
+    weight: String,
+  },
+  { timestamps: true },
+);
+
+const OfferSchema = new mongoose.Schema(
+  {
+    title: String,
+    titleAr: String,
+    description: String,
+    descriptionAr: String,
+    subtitle: String,
+    subtitleAr: String,
+    badge: String,
+    badgeAr: String,
+    code: String,
+    type: { type: String, enum: ['percentage', 'fixed', 'shipping', 'bundle'], default: 'percentage' },
+    value: { type: Number, default: 0 },
+    minOrder: Number,
+    maxDiscount: Number,
+    image: String,
+    gradient: String,
+    icon: String,
+    startDate: Date,
+    endDate: Date,
+    usageCount: { type: Number, default: 0 },
+    usageLimit: Number,
+    isActive: { type: Boolean, default: true },
+    isFeatured: { type: Boolean, default: false },
+    sortOrder: { type: Number, default: 0 },
+  },
+  { timestamps: true },
+);
+
+const User = mongoose.model('User', UserSchema);
+const Category = mongoose.model('Category', CategorySchema);
+const Product = mongoose.model('Product', ProductSchema);
+const Offer = mongoose.model('Offer', OfferSchema);
+
+async function seed() {
+  try {
+    await mongoose.connect(MONGODB_URI);
+    console.log('Connected to MongoDB');
+
+    // Clear existing data
+    await Promise.all([
+      User.deleteMany({}),
+      Category.deleteMany({}),
+      Product.deleteMany({}),
+      Offer.deleteMany({}),
+    ]);
+    console.log('Cleared existing data');
+
+    // Seed Admin User
+    const hashedPassword = await bcrypt.hash('Admin@123', 12);
+    await User.create({
+      fullName: 'Admin',
+      email: 'admin@alfursan.com',
+      phone: '+974 5555 0000',
+      password: hashedPassword,
+      role: 'admin',
+      isVerified: true,
+      isActive: true,
+    });
+    console.log('Admin user created: admin@alfursan.com / Admin@123');
+
+    // Seed Categories
+    const categoriesData = [
+      {
+        name: 'Kalamantan Oud',
+        nameAr: 'عود كالامنتان',
+        description: 'Rich, earthy Indonesian agarwood with deep smoky undertones',
+        descriptionAr: 'خشب العود الإندونيسي الغني والترابي مع نغمات دخانية عميقة',
+        image: 'https://images.unsplash.com/photo-1594035910387-fea47794261f?w=800&q=80',
+        slug: 'kalamantan',
+        productCount: 3,
+        featured: true,
+      },
+      {
+        name: 'Vietnamese Oud',
+        nameAr: 'عود فيتنامي',
+        description: 'Sweet, floral notes with exceptional complexity and depth',
+        descriptionAr: 'نغمات حلوة وزهرية مع تعقيد وعمق استثنائي',
+        image: 'https://images.unsplash.com/photo-1615634260167-c8cdede054de?w=800&q=80',
+        slug: 'vietnamese',
+        productCount: 3,
+        featured: true,
+      },
+      {
+        name: 'Malaysian Oud',
+        nameAr: 'عود ماليزي',
+        description: 'Smooth, woody selections with refined aromatic profiles',
+        descriptionAr: 'مختارات خشبية ناعمة مع ملامح عطرية راقية',
+        image: 'https://images.unsplash.com/photo-1595425964071-2c1ecb10b52d?w=800&q=80',
+        slug: 'malaysian',
+        productCount: 2,
+        featured: true,
+      },
+      {
+        name: 'Malino Collection',
+        nameAr: 'مجموعة مالينو',
+        description: 'Our signature rare Malino oud with distinctive character',
+        descriptionAr: 'عود مالينو النادر المميز من مجموعتنا الخاصة',
+        image: 'https://images.unsplash.com/photo-1541643600914-78b084683601?w=800&q=80',
+        slug: 'malino',
+        productCount: 3,
+        featured: true,
+      },
+      {
+        name: 'Premium Selection',
+        nameAr: 'المختارات الفاخرة',
+        description: 'Hand-picked finest quality oud for the connoisseur',
+        descriptionAr: 'أجود أنواع العود المختارة يدوياً للخبراء',
+        image: 'https://images.unsplash.com/photo-1608528577891-eb055944f2e7?w=800&q=80',
+        slug: 'premium',
+        productCount: 0,
+        featured: false,
+      },
+      {
+        name: 'Gift Sets',
+        nameAr: 'مجموعات الهدايا',
+        description: 'Beautifully curated sets for special occasions',
+        descriptionAr: 'مجموعات منسقة بعناية للمناسبات الخاصة',
+        image: 'https://images.unsplash.com/photo-1549439602-43ebca2327af?w=800&q=80',
+        slug: 'gift-sets',
+        productCount: 0,
+        featured: false,
+      },
+    ];
+
+    const categories = await Category.insertMany(categoriesData);
+    console.log(`Seeded ${categories.length} categories`);
+
+    // Map category slugs to their IDs
+    const catMap = {};
+    categories.forEach((cat) => {
+      catMap[cat.slug] = cat._id;
+    });
+
+    // Seed Products
+    const productsData = [
+      {
+        name: 'Kalamantan Mori',
+        nameAr: 'كالامنتان موري',
+        description: 'Premium Indonesian agarwood with deep smoky notes and earthy undertones',
+        descriptionAr: 'خشب العود الإندونيسي الفاخر بنغمات دخانية عميقة وأساسيات ترابية',
+        price: 265,
+        image: 'https://images.unsplash.com/photo-1616949755610-8c9bbc08f138?w=600&auto=format&fit=crop',
+        slug: 'kalamantan-mori',
+        sku: 'KM-001',
+        category: catMap['kalamantan'],
+        categoryName: 'Kalamantan Oud',
+        rating: 4.9,
+        reviews: 128,
+        badge: 'Premium',
+        badgeAr: 'فاخر',
+        isNew: true,
+        stock: 45,
+        sales: 128,
+        weight: '10g',
+      },
+      {
+        name: 'Kalamantan Al-Zahab',
+        nameAr: 'كالامنتان الذهب',
+        description: 'Golden grade Kalamantan oud with sweet honey-like aroma',
+        descriptionAr: 'عود كالامنتان بدرجة ذهبية مع عبير حلو كالعسل',
+        price: 500,
+        image: 'https://images.unsplash.com/photo-1595425970377-c9703cf48b6d?w=600&auto=format&fit=crop',
+        slug: 'kalamantan-al-zahab',
+        sku: 'KAZ-002',
+        category: catMap['kalamantan'],
+        categoryName: 'Kalamantan Oud',
+        rating: 5.0,
+        reviews: 89,
+        badge: 'Best Seller',
+        badgeAr: 'الأكثر مبيعاً',
+        isBestseller: true,
+        stock: 30,
+        sales: 210,
+        weight: '10g',
+      },
+      {
+        name: 'Malino Khas',
+        nameAr: 'مالينو خاص',
+        description: 'Rare Malino oud with distinctive woody fragrance and long-lasting scent',
+        descriptionAr: 'عود مالينو نادر بعطر خشبي مميز ورائحة تدوم طويلاً',
+        price: 790,
+        image: 'https://images.unsplash.com/photo-1547887538-047f814bfb64?w=600&auto=format&fit=crop',
+        slug: 'malino-khas',
+        sku: 'MK-003',
+        category: catMap['malino'],
+        categoryName: 'Malino Collection',
+        rating: 5.0,
+        reviews: 64,
+        badge: 'Exclusive',
+        badgeAr: 'حصري',
+        isLimitedEdition: true,
+        stock: 15,
+        sales: 64,
+        weight: '10g',
+      },
+      {
+        name: 'Malino Shakhsi',
+        nameAr: 'مالينو شخصي',
+        description: 'Personal grade Malino oud perfect for daily use and meditation',
+        descriptionAr: 'عود مالينو بدرجة شخصية مثالي للاستخدام اليومي والتأمل',
+        price: 380,
+        image: 'https://images.unsplash.com/photo-1600612253971-422e7f7faeb6?w=600&auto=format&fit=crop',
+        slug: 'malino-shakhsi',
+        sku: 'MS-004',
+        category: catMap['malino'],
+        categoryName: 'Malino Collection',
+        rating: 4.8,
+        reviews: 112,
+        isNew: true,
+        stock: 40,
+        sales: 112,
+        weight: '10g',
+      },
+      {
+        name: 'Vietnamese Fakhir',
+        nameAr: 'فيتنامي فاخر',
+        description: 'Luxurious Vietnamese oud with complex floral and woody notes',
+        descriptionAr: 'عود فيتنامي فاخر بنغمات زهرية وخشبية معقدة',
+        price: 300,
+        image: 'https://images.unsplash.com/photo-1608571423902-eed8a5ad9328?w=600&auto=format&fit=crop',
+        slug: 'vietnamese-fakhir',
+        sku: 'VF-005',
+        category: catMap['vietnamese'],
+        categoryName: 'Vietnamese Oud',
+        rating: 4.9,
+        reviews: 76,
+        badge: 'Popular',
+        badgeAr: 'رائج',
+        isBestseller: true,
+        stock: 35,
+        sales: 160,
+        weight: '10g',
+      },
+      {
+        name: 'Vietnamese Munasabat',
+        nameAr: 'فيتنامي مناسبات',
+        description: 'Special occasion Vietnamese oud with rich aromatic profile',
+        descriptionAr: 'عود فيتنامي للمناسبات الخاصة بملمح عطري غني',
+        price: 220,
+        originalPrice: 280,
+        image: 'https://images.unsplash.com/photo-1590736969955-71cc94901144?w=600&auto=format&fit=crop',
+        slug: 'vietnamese-munasabat',
+        sku: 'VM-006',
+        category: catMap['vietnamese'],
+        categoryName: 'Vietnamese Oud',
+        rating: 4.7,
+        reviews: 93,
+        badge: 'Sale',
+        badgeAr: 'تخفيض',
+        stock: 55,
+        sales: 93,
+        weight: '10g',
+      },
+      {
+        name: 'Malino Al-Zubarah',
+        nameAr: 'مالينو الزبارة',
+        description: 'Signature blend exclusive to Oud Al-Zubarah with exceptional quality',
+        descriptionAr: 'مزيج مميز حصري لعود الزبارة بجودة استثنائية',
+        price: 1600,
+        image: 'https://images.unsplash.com/photo-1594035910387-fea47794261f?w=600&auto=format&fit=crop',
+        slug: 'malino-alzubarah',
+        sku: 'MAZ-007',
+        category: catMap['malino'],
+        categoryName: 'Malino Collection',
+        rating: 5.0,
+        reviews: 45,
+        badge: 'Signature',
+        badgeAr: 'مميز',
+        isLimitedEdition: true,
+        isNew: true,
+        isFeatured: true,
+        stock: 10,
+        sales: 45,
+        weight: '10g',
+      },
+      {
+        name: 'Kalamantan Fakhir',
+        nameAr: 'كالامنتان فاخر',
+        description: 'Premium grade Kalamantan with intense woody character',
+        descriptionAr: 'كالامنتان بدرجة فاخرة مع طابع خشبي مكثف',
+        price: 650,
+        image: 'https://images.unsplash.com/photo-1592945403407-9caf930b2c3d?w=600&auto=format&fit=crop',
+        slug: 'kalamantan-fakhir',
+        sku: 'KF-008',
+        category: catMap['kalamantan'],
+        categoryName: 'Kalamantan Oud',
+        rating: 4.9,
+        reviews: 58,
+        isBestseller: true,
+        stock: 25,
+        sales: 140,
+        weight: '10g',
+      },
+      {
+        name: 'Malaysian Qadeem Heavy',
+        nameAr: 'ماليزي قديم ثقيل',
+        description: 'Aged Malaysian oud with deep, complex, and long-lasting fragrance',
+        descriptionAr: 'عود ماليزي معتق بعطر عميق ومعقد ويدوم طويلاً',
+        price: 1350,
+        image: 'https://images.unsplash.com/photo-1615634260167-4d5bae3d9c8b?w=600&auto=format&fit=crop',
+        slug: 'malaysian-qadeem-heavy',
+        sku: 'MQH-009',
+        category: catMap['malaysian'],
+        categoryName: 'Malaysian Oud',
+        rating: 5.0,
+        reviews: 34,
+        badge: 'Aged Collection',
+        badgeAr: 'مجموعة معتقة',
+        isLimitedEdition: true,
+        stock: 8,
+        sales: 34,
+        weight: '10g',
+      },
+      {
+        name: 'Vietnamese Slices',
+        nameAr: 'شرائح فيتنامية',
+        description: 'Thin Vietnamese oud slices ideal for bakhoor and home fragrance',
+        descriptionAr: 'شرائح عود فيتنامية رقيقة مثالية للبخور وعطر المنزل',
+        price: 120,
+        image: 'https://images.unsplash.com/photo-1541643600914-78b084683601?w=600&auto=format&fit=crop',
+        slug: 'vietnamese-slices',
+        sku: 'VS-010',
+        category: catMap['vietnamese'],
+        categoryName: 'Vietnamese Oud',
+        rating: 4.6,
+        reviews: 156,
+        isNew: true,
+        stock: 100,
+        sales: 156,
+        weight: '20g',
+      },
+      {
+        name: 'Malaysian VIP',
+        nameAr: 'ماليزي في آي بي',
+        description: 'VIP grade Malaysian oud reserved for distinguished collectors',
+        descriptionAr: 'عود ماليزي بدرجة VIP محجوز لهواة الجمع المميزين',
+        price: 600,
+        image: 'https://images.unsplash.com/photo-1587017539504-67cfbddac569?w=600&auto=format&fit=crop',
+        slug: 'malaysian-vip',
+        sku: 'MVIP-011',
+        category: catMap['malaysian'],
+        categoryName: 'Malaysian Oud',
+        rating: 4.9,
+        reviews: 67,
+        badge: 'VIP Grade',
+        badgeAr: 'درجة VIP',
+        isBestseller: true,
+        stock: 20,
+        sales: 120,
+        weight: '10g',
+      },
+      {
+        name: 'Moroki Munasabat',
+        nameAr: 'موروكي مناسبات',
+        description: 'Moroccan-style oud blend perfect for special occasions',
+        descriptionAr: 'مزيج عود بأسلوب مغربي مثالي للمناسبات الخاصة',
+        price: 200,
+        originalPrice: 250,
+        image: 'https://images.unsplash.com/photo-1607344645866-009c320b63e0?w=600&auto=format&fit=crop',
+        slug: 'moroki-munasabat',
+        sku: 'MM-012',
+        category: catMap['kalamantan'],
+        categoryName: 'Kalamantan Oud',
+        rating: 4.7,
+        reviews: 84,
+        badge: '20% Off',
+        badgeAr: 'خصم 20%',
+        stock: 60,
+        sales: 84,
+        weight: '10g',
+      },
+    ];
+
+    const products = await Product.insertMany(productsData);
+    console.log(`Seeded ${products.length} products`);
+
+    // Seed Offers
+    const offersData = [
+      {
+        title: 'Welcome Offer',
+        titleAr: 'عرض الترحيب',
+        description: 'Get 15% off on your first order when you sign up',
+        descriptionAr: 'احصل على خصم 15% على طلبك الأول عند التسجيل',
+        badge: '15% OFF',
+        badgeAr: 'خصم 15%',
+        code: 'WELCOME15',
+        type: 'percentage',
+        value: 15,
+        image: 'https://images.unsplash.com/photo-1594035910387-fea47794261f?w=800&q=80',
+        isActive: true,
+        isFeatured: true,
+        sortOrder: 1,
+      },
+      {
+        title: 'Free Shipping',
+        titleAr: 'شحن مجاني',
+        description: 'Free delivery on all orders above 500 QAR across Qatar',
+        descriptionAr: 'توصيل مجاني لجميع الطلبات فوق 500 ريال قطري في جميع أنحاء قطر',
+        badge: 'FREE',
+        badgeAr: 'مجاني',
+        type: 'shipping',
+        value: 0,
+        minOrder: 500,
+        image: 'https://images.unsplash.com/photo-1615634260167-c8cdede054de?w=800&q=80',
+        isActive: true,
+        isFeatured: true,
+        sortOrder: 2,
+      },
+      {
+        title: 'Bundle & Save',
+        titleAr: 'اشترِ واوفر',
+        description: 'Buy any 2 products and get 10% off your entire order',
+        descriptionAr: 'اشترِ أي منتجين واحصل على خصم 10% على طلبك بالكامل',
+        badge: '10% OFF',
+        badgeAr: 'خصم 10%',
+        code: 'BUNDLE10',
+        type: 'bundle',
+        value: 10,
+        image: 'https://images.unsplash.com/photo-1595425964071-2c1ecb10b52d?w=800&q=80',
+        endDate: new Date('2026-03-31'),
+        isActive: true,
+        isFeatured: true,
+        sortOrder: 3,
+      },
+      {
+        title: 'VIP Members',
+        titleAr: 'أعضاء VIP',
+        description: 'Exclusive 20% discount for our VIP members on all products',
+        descriptionAr: 'خصم حصري 20% لأعضاء VIP على جميع المنتجات',
+        badge: '20% OFF',
+        badgeAr: 'خصم 20%',
+        type: 'percentage',
+        value: 20,
+        image: 'https://images.unsplash.com/photo-1541643600914-78b084683601?w=800&q=80',
+        isActive: true,
+        isFeatured: true,
+        sortOrder: 4,
+      },
+    ];
+
+    const offersResult = await Offer.insertMany(offersData);
+    console.log(`Seeded ${offersResult.length} offers`);
+
+    console.log('\n✅ Database seeded successfully!');
+    console.log('Admin login: admin@alfursan.com / Admin@123');
+    process.exit(0);
+  } catch (error) {
+    console.error('Seed error:', error);
+    process.exit(1);
+  }
+}
+
+seed();
