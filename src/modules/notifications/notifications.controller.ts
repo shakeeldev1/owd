@@ -19,7 +19,7 @@ export class NotificationsController {
 
   @Get('admin')
   @UseGuards(RolesGuard)
-  @Roles('admin')
+  @Roles('admin', 'staff')
   getAdminNotifications(
     @Query('page') page?: number,
     @Query('limit') limit?: number,
@@ -39,7 +39,7 @@ export class NotificationsController {
 
   @Patch('admin/read-all')
   @UseGuards(RolesGuard)
-  @Roles('admin')
+  @Roles('admin', 'staff')
   markAllAdminAsRead() {
     return this.notificationsService.markAllAdminAsRead();
   }

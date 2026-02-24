@@ -13,10 +13,11 @@ export class CartService {
   ) {}
 
   private async getOrCreateCart(userId: string): Promise<CartDocument> {
-    let cart = await this.cartModel.findOne({ user: new Types.ObjectId(userId) });
-    if (!cart) {
-      cart = await this.cartModel.create({ user: new Types.ObjectId(userId), items: [], wishlist: [] });
-    }
+    const cart = await this.cartModel.findOneAndUpdate(
+      { user: new Types.ObjectId(userId) },
+      { $setOnInsert: { items: [], wishlist: [] } },
+      { upsert: true, new: true },
+    );
     return cart;
   }
 
