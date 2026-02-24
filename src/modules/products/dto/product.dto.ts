@@ -29,6 +29,18 @@ export class CreateProductDto {
   sku: string;
 
   @IsString() @IsOptional()
+  itemCode?: string;
+
+  @IsString() @IsOptional()
+  unit?: string;
+
+  @IsNumber() @IsOptional()
+  pricePerTola?: number;
+
+  @IsNumber() @IsOptional()
+  lowStockThreshold?: number;
+
+  @IsString() @IsOptional()
   category?: string;
 
   @IsString() @IsOptional()
@@ -75,6 +87,10 @@ export class UpdateProductDto {
   @IsString() @IsOptional() image?: string;
   @IsArray() @IsOptional() images?: string[];
   @IsString() @IsOptional() sku?: string;
+  @IsString() @IsOptional() itemCode?: string;
+  @IsString() @IsOptional() unit?: string;
+  @IsNumber() @IsOptional() pricePerTola?: number;
+  @IsNumber() @IsOptional() lowStockThreshold?: number;
   @IsString() @IsOptional() category?: string;
   @IsString() @IsOptional() categoryName?: string;
   @IsString() @IsOptional() badge?: string;

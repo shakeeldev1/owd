@@ -85,7 +85,7 @@ export class ProductsService {
       .limit(limit);
 
     return {
-      products: products.map((p) => this.formatProduct(p)),
+      products: products.map((p) => this.formatPublicProduct(p)),
       total,
       page,
       totalPages: Math.ceil(total / limit),
@@ -95,13 +95,13 @@ export class ProductsService {
   async findBySlug(slug: string) {
     const product = await this.productModel.findOne({ slug, status: 'active' });
     if (!product) throw new NotFoundException('Product not found');
-    return this.formatProduct(product);
+    return this.formatPublicProduct(product);
   }
 
   async findById(id: string) {
     const product = await this.productModel.findById(id);
     if (!product) throw new NotFoundException('Product not found');
-    return this.formatProduct(product);
+    return this.formatPublicProduct(product);
   }
 
   async update(id: string, dto: UpdateProductDto) {
@@ -115,7 +115,7 @@ export class ProductsService {
     }
     const product = await this.productModel.findByIdAndUpdate(id, { $set: data }, { new: true });
     if (!product) throw new NotFoundException('Product not found');
-    return { message: 'Product updated', product: this.formatProduct(product) };
+    return { message: 'Product updated', product: this.formatAdminProduct(product) };
   }
 
   async remove(id: string) {
@@ -148,7 +148,7 @@ export class ProductsService {
       })
       .limit(limit);
 
-    return related.map((p) => this.formatProduct(p));
+    return related.map((p) => this.formatPublicProduct(p));
   }
 
   async getTopProducts(limit = 5) {
@@ -156,7 +156,7 @@ export class ProductsService {
       .find({ status: 'active' })
       .sort({ sales: -1 })
       .limit(limit);
-    return products.map((p) => this.formatProduct(p));
+    return products.map((p) => this.formatPublicProduct(p));
   }
 
   // Admin: find all including draft/archived
@@ -181,14 +181,15 @@ export class ProductsService {
       .limit(limit);
 
     return {
-      products: products.map((p) => this.formatProduct(p)),
+      products: products.map((p) => this.formatAdminProduct(p)),
       total,
       page,
       totalPages: Math.ceil(total / limit),
     };
   }
 
-  private formatProduct(p: ProductDocument) {
+  // ─── Public formatter: hides stock, adds isAvailable ───
+  private formatPublicProduct(p: ProductDocument) {
     return {
       id: p._id,
       name: p.name,
@@ -197,11 +198,49 @@ export class ProductsService {
       descriptionAr: p.descriptionAr,
       price: p.price,
       originalPrice: p.originalPrice,
+      pricePerTola: (p as any).pricePerTola,
+      unit: (p as any).unit,
+      image: p.image,
+      images: p.images,
+      slug: p.slug,
+      href: `/shop/${p.slug}`,
+      itemCode: (p as any).itemCode,
+      category: p.category,
+      categoryName: p.categoryName,
+      rating: p.rating,
+      reviews: p.reviews,
+      badge: p.badge,
+      badgeAr: p.badgeAr,
+      isNew: p.isNew,
+      isBestseller: p.isBestseller,
+      isLimitedEdition: p.isLimitedEdition,
+      isFeatured: p.isFeatured,
+      isAvailable: p.stock > 0,
+      sales: p.sales,
+      status: p.status,
+      weight: p.weight,
+      createdAt: (p as any).createdAt,
+    };
+  }
+
+  // ─── Admin formatter: includes stock, threshold, all fields ───
+  private formatAdminProduct(p: ProductDocument) {
+    return {
+      id: p._id,
+      name: p.name,
+      nameAr: p.nameAr,
+      description: p.description,
+      descriptionAr: p.descriptionAr,
+      price: p.price,
+      originalPrice: p.originalPrice,
+      pricePerTola: (p as any).pricePerTola,
+      unit: (p as any).unit,
       image: p.image,
       images: p.images,
       slug: p.slug,
       href: `/shop/${p.slug}`,
       sku: p.sku,
+      itemCode: (p as any).itemCode,
       category: p.category,
       categoryName: p.categoryName,
       rating: p.rating,
@@ -213,6 +252,8 @@ export class ProductsService {
       isLimitedEdition: p.isLimitedEdition,
       isFeatured: p.isFeatured,
       stock: p.stock,
+      lowStockThreshold: (p as any).lowStockThreshold,
+      isAvailable: p.stock > 0,
       sales: p.sales,
       status: p.status,
       weight: p.weight,

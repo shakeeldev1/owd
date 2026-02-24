@@ -137,4 +137,59 @@ export class MailService {
     `;
     await this.sendMail(to, 'How was your order? - Al Fursan Oud', html);
   }
+
+  async sendLowStockAlert(productName: string, currentStock: number, unit: string): Promise<void> {
+    const adminEmail = this.configService.get('ADMIN_EMAIL') || this.configService.get('SMTP_USER');
+    if (!adminEmail) return;
+
+    const html = `
+      <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
+          <h1 style="color:#BA974F;margin:0;font-size:24px;">Al Fursan Oud</h1>
+          <p style="color:#94a3b8;margin:8px 0 0;">Low Stock Alert</p>
+        </div>
+        <div style="padding:32px;">
+          <div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:16px;margin:0 0 24px;border-radius:0 8px 8px 0;">
+            <h2 style="color:#92400e;margin:0 0 8px;">⚠️ Low Stock Warning</h2>
+            <p style="color:#78350f;margin:0;font-size:16px;">
+              Product <strong>${productName}</strong> is almost out of stock.<br/>
+              Remaining quantity: <strong>${currentStock} ${unit.toLowerCase()}</strong>.
+            </p>
+          </div>
+          <p style="color:#64748b;line-height:1.6;">Please restock this item as soon as possible to avoid stockouts.</p>
+          <div style="text-align:center;margin:24px 0;">
+            <a href="${this.configService.get('FRONTEND_URL', 'http://localhost:3000')}/admin/inventory" style="background:#BA974F;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;">View Inventory</a>
+          </div>
+        </div>
+      </div>
+    `;
+    await this.sendMail(adminEmail, `⚠️ Low Stock: ${productName} - Al Fursan Oud`, html);
+  }
+
+  async sendLowStockBulkAlert(items: string[]): Promise<void> {
+    const adminEmail = this.configService.get('ADMIN_EMAIL') || this.configService.get('SMTP_USER');
+    if (!adminEmail) return;
+
+    const itemsHtml = items.map(item => `<li style="padding:4px 0;color:#78350f;">${item}</li>`).join('');
+
+    const html = `
+      <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
+          <h1 style="color:#BA974F;margin:0;font-size:24px;">Al Fursan Oud</h1>
+          <p style="color:#94a3b8;margin:8px 0 0;">Low Stock Report</p>
+        </div>
+        <div style="padding:32px;">
+          <div style="background:#fef3c7;border-left:4px solid #f59e0b;padding:16px;margin:0 0 24px;border-radius:0 8px 8px 0;">
+            <h2 style="color:#92400e;margin:0 0 12px;">⚠️ ${items.length} Products Below Stock Threshold</h2>
+            <ul style="margin:0;padding-left:20px;">${itemsHtml}</ul>
+          </div>
+          <p style="color:#64748b;line-height:1.6;">Please review and restock these items.</p>
+          <div style="text-align:center;margin:24px 0;">
+            <a href="${this.configService.get('FRONTEND_URL', 'http://localhost:3000')}/admin/inventory" style="background:#BA974F;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;">View Inventory</a>
+          </div>
+        </div>
+      </div>
+    `;
+    await this.sendMail(adminEmail, `⚠️ Low Stock Alert: ${items.length} items - Al Fursan Oud`, html);
+  }
 }

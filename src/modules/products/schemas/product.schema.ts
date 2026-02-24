@@ -35,6 +35,18 @@ export class Product {
   @Prop({ required: true })
   sku: string;
 
+  @Prop({ unique: true, sparse: true })
+  itemCode: string;
+
+  @Prop({ default: 'Grams', enum: ['Grams', 'Piece', 'Tola', 'ml', 'kg'] })
+  unit: string;
+
+  @Prop({ default: 0 })
+  pricePerTola: number;
+
+  @Prop({ default: 10 })
+  lowStockThreshold: number;
+
   @Prop({ type: Types.ObjectId, ref: 'Category' })
   category: Types.ObjectId;
 
@@ -84,3 +96,4 @@ ProductSchema.index({ name: 'text', nameAr: 'text', description: 'text' });
 ProductSchema.index({ slug: 1 });
 ProductSchema.index({ category: 1 });
 ProductSchema.index({ status: 1 });
+ProductSchema.index({ itemCode: 1 });

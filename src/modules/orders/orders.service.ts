@@ -67,14 +67,23 @@ export class OrdersService {
           { new: true },
         );
 
-        // Check low stock
-        if (product && product.stock <= 5 && product.stock >= 0) {
-          await this.notificationsService.notifyAdmins(
-            'Low Stock Alert',
-            `${product.name} has only ${product.stock} units remaining`,
-            'stock',
-          );
-          this.whatsAppService.sendLowStockAlert('admin', product.name, product.stock);
+        // Check low stock using per-product threshold
+        if (product) {
+          const threshold = (product as any).lowStockThreshold || 10;
+          if (product.stock <= threshold && product.stock >= 0) {
+            const unit = (product as any).unit || 'units';
+            const alertMsg = `Product ${product.name} is almost out of stock. Remaining quantity: ${product.stock} ${unit.toLowerCase()}.`;
+            await this.notificationsService.notifyAdmins(
+              'Low Stock Alert',
+              alertMsg,
+              'stock',
+            );
+            this.whatsAppService.sendLowStockAlert('admin', product.name, product.stock);
+            // Send email alert
+            try {
+              await this.mailService.sendLowStockAlert(product.name, product.stock, unit);
+            } catch (e) { /* email failure should not block */ }
+          }
         }
       }
     }
@@ -94,6 +103,24 @@ export class OrdersService {
   async create(userId: string, dto: CreateOrderDto) {
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
+
+    // ─── Validate stock availability before placing order ───
+    for (const item of dto.items) {
+      if (item.product) {
+        const product = await this.productModel.findById(item.product);
+        if (!product) {
+          throw new BadRequestException(`Product not found: ${item.name}`);
+        }
+        if (product.stock <= 0) {
+          throw new BadRequestException(`Product "${product.name}" is out of stock`);
+        }
+        if (product.stock < item.quantity) {
+          throw new BadRequestException(
+            `Insufficient stock for "${product.name}". Available: ${product.stock}, Requested: ${item.quantity}`,
+          );
+        }
+      }
+    }
 
     const subtotal = dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const shippingCost = subtotal >= 500 ? 0 : 30;
