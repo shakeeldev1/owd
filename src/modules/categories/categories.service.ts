@@ -27,6 +27,7 @@ export class CategoriesService {
 
     const categories = await this.categoryModel.find(filter).sort({ name: 1 });
     return categories.map((c) => ({
+      _id: c._id,
       id: c._id,
       name: c.name,
       nameAr: c.nameAr,

@@ -55,6 +55,7 @@ export class InventoryService {
 
     return {
       items: products.map((p) => ({
+        _id: p._id,
         id: p._id,
         name: p.name,
         nameAr: p.nameAr,
@@ -485,6 +486,7 @@ export class InventoryService {
     return {
       lowStockCount: lowStockProducts.length,
       items: lowStockProducts.map((p) => ({
+        _id: p._id,
         id: p._id,
         name: p.name,
         sku: p.sku,

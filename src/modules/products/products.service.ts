@@ -191,6 +191,7 @@ export class ProductsService {
   // ─── Public formatter: hides stock, adds isAvailable ───
   private formatPublicProduct(p: ProductDocument) {
     return {
+      _id: p._id,
       id: p._id,
       name: p.name,
       nameAr: p.nameAr,
@@ -226,6 +227,7 @@ export class ProductsService {
   // ─── Admin formatter: includes stock, threshold, all fields ───
   private formatAdminProduct(p: ProductDocument) {
     return {
+      _id: p._id,
       id: p._id,
       name: p.name,
       nameAr: p.nameAr,
