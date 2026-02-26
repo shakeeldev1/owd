@@ -1,7 +1,7 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ProductsService } from './products.service';
-import { CreateProductDto, UpdateProductDto } from './dto/product.dto';
+import { CreateProductDto, UpdateProductDto, AddProductReviewDto } from './dto/product.dto';
 import { RolesGuard, Roles } from '../auth/roles.guard';
 
 @Controller('products')
@@ -63,6 +63,12 @@ export class ProductsController {
   @Get(':id')
   findById(@Param('id') id: string) {
     return this.productsService.findById(id);
+  }
+
+  @Post(':id/reviews')
+  @UseGuards(AuthGuard('jwt'))
+  addReview(@Param('id') id: string, @Request() req: any, @Body() dto: AddProductReviewDto) {
+    return this.productsService.addReview(id, req.user, dto);
   }
 
   @Post()

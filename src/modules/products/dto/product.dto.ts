@@ -104,3 +104,12 @@ export class UpdateProductDto {
   @IsEnum(['active', 'draft', 'archived']) @IsOptional() status?: string;
   @IsNumber() @IsOptional() weight?: number;
 }
+
+export class AddProductReviewDto {
+  @IsNumber()
+  rating: number;
+
+  @IsString()
+  @IsOptional()
+  comment?: string;
+}

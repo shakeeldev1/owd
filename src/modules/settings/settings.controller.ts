@@ -14,7 +14,6 @@ import { Settings } from './settings.schema';
 import { RolesGuard, Roles } from '../auth/roles.guard';
 
 @Controller('settings')
-@UseGuards(AuthGuard('jwt'), RolesGuard)
 export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 
@@ -37,6 +36,7 @@ export class SettingsController {
   }
 
   @Patch()
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('admin', 'staff')
   @HttpCode(HttpStatus.OK)
   async updateSettings(@Body() updateSettingsDto: Partial<Settings>) {

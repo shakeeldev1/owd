@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ConflictException } from '@nestjs/common
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Product, ProductDocument } from './schemas/product.schema';
-import { CreateProductDto, UpdateProductDto } from './dto/product.dto';
+import { CreateProductDto, UpdateProductDto, AddProductReviewDto } from './dto/product.dto';
 
 @Injectable()
 export class ProductsService {
@@ -159,6 +159,46 @@ export class ProductsService {
     return products.map((p) => this.formatPublicProduct(p));
   }
 
+  async addReview(productId: string, user: any, dto: AddProductReviewDto) {
+    if (!dto.rating || dto.rating < 1 || dto.rating > 5) {
+      throw new ConflictException('Rating must be between 1 and 5');
+    }
+
+    const product = await this.productModel.findById(productId);
+    if (!product) throw new NotFoundException('Product not found');
+
+    const existing = (product as any).productReviews?.find(
+      (r: any) => String(r.user) === String(user._id),
+    );
+    if (existing) {
+      throw new ConflictException('You have already reviewed this product');
+    }
+
+    const review = {
+      user: user._id,
+      name: user.fullName || 'Customer',
+      rating: Math.round(dto.rating),
+      comment: dto.comment?.trim() || '',
+      verified: true,
+      helpful: 0,
+      createdAt: new Date(),
+    };
+
+    (product as any).productReviews = [...((product as any).productReviews || []), review];
+
+    const totalReviews = (product as any).productReviews.length;
+    const totalRating = (product as any).productReviews.reduce((sum: number, r: any) => sum + Number(r.rating || 0), 0);
+    product.reviews = totalReviews;
+    product.rating = totalReviews > 0 ? Math.round((totalRating / totalReviews) * 10) / 10 : 0;
+
+    await product.save();
+
+    return {
+      message: 'Review submitted successfully',
+      product: this.formatPublicProduct(product),
+    };
+  }
+
   // Admin: find all including draft/archived
   async adminFindAll(query: { search?: string; status?: string; page?: number; limit?: number }) {
     const { search, status, page = 1, limit = 10 } = query;
@@ -210,6 +250,15 @@ export class ProductsService {
       categoryName: p.categoryName,
       rating: p.rating,
       reviews: p.reviews,
+      productReviews: ((p as any).productReviews || []).map((review: any, index: number) => ({
+        id: index + 1,
+        name: review.name,
+        rating: review.rating,
+        date: review.createdAt,
+        comment: review.comment,
+        verified: review.verified,
+        helpful: review.helpful,
+      })),
       badge: p.badge,
       badgeAr: p.badgeAr,
       isNew: p.isNew,
@@ -247,6 +296,7 @@ export class ProductsService {
       categoryName: p.categoryName,
       rating: p.rating,
       reviews: p.reviews,
+      productReviews: (p as any).productReviews || [],
       badge: p.badge,
       badgeAr: p.badgeAr,
       isNew: p.isNew,

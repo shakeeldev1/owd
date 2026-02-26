@@ -130,13 +130,17 @@ export class OrdersService {
     const paymentMethod = dto.paymentMethod || 'cod';
     const paymentStatus = paymentMethod === 'cod' ? 'cod' : (dto.paymentId ? 'paid' : 'pending');
 
+    const customerName = dto.customer?.name?.trim() || user.fullName;
+    const customerEmail = dto.customer?.email?.trim() || user.email;
+    const customerPhone = dto.customer?.phone?.trim() || user.phone || '';
+
     const order = await this.orderModel.create({
       orderNumber: this.generateOrderNumber(),
       user: new Types.ObjectId(userId),
       customer: {
-        name: user.fullName,
-        email: user.email,
-        phone: user.phone,
+        name: customerName,
+        email: customerEmail,
+        phone: customerPhone,
       },
       items: dto.items,
       subtotal,
@@ -166,8 +170,8 @@ export class OrdersService {
     // Send order confirmation email
     try {
       await this.mailService.sendOrderConfirmation(
-        user.email,
-        user.fullName,
+        customerEmail,
+        customerName,
         order.orderNumber,
         order.total,
         order.items as any,
@@ -176,8 +180,8 @@ export class OrdersService {
 
     // Send WhatsApp confirmation
     this.whatsAppService.sendOrderConfirmation(
-      user.phone,
-      user.fullName,
+      customerPhone,
+      customerName,
       order.orderNumber,
       order.total,
     );
@@ -185,7 +189,7 @@ export class OrdersService {
     // Notify admins
     await this.notificationsService.notifyAdmins(
       'New Order',
-      `Order ${order.orderNumber} placed by ${user.fullName} - ${total} QAR`,
+      `Order ${order.orderNumber} placed by ${customerName} - ${total} QAR`,
       'order',
     );
 

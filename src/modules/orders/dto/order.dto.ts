@@ -10,6 +10,12 @@ export class OrderItemDto {
   @IsString() @IsOptional() image?: string;
 }
 
+export class OrderCustomerDto {
+  @IsString() @IsOptional() name?: string;
+  @IsString() @IsOptional() email?: string;
+  @IsString() @IsOptional() phone?: string;
+}
+
 export class CreateOrderDto {
   @IsArray()
   @ValidateNested({ each: true })
@@ -21,6 +27,11 @@ export class CreateOrderDto {
   @IsString() @IsOptional() paymentId?: string;
   @IsString() @IsOptional() discountCode?: string;
   @IsString() @IsOptional() notes?: string;
+
+  @ValidateNested()
+  @Type(() => OrderCustomerDto)
+  @IsOptional()
+  customer?: OrderCustomerDto;
 }
 
 export class AdminCreateOrderDto {

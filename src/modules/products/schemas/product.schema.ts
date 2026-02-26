@@ -3,6 +3,32 @@ import { Document, Types } from 'mongoose';
 
 export type ProductDocument = Product & Document;
 
+@Schema({ _id: false })
+export class ProductReview {
+  @Prop({ type: Types.ObjectId, ref: 'User', required: true })
+  user: Types.ObjectId;
+
+  @Prop({ required: true })
+  name: string;
+
+  @Prop({ required: true, min: 1, max: 5 })
+  rating: number;
+
+  @Prop({ default: '' })
+  comment: string;
+
+  @Prop({ default: true })
+  verified: boolean;
+
+  @Prop({ default: 0 })
+  helpful: number;
+
+  @Prop({ default: Date.now })
+  createdAt: Date;
+}
+
+const ProductReviewSchema = SchemaFactory.createForClass(ProductReview);
+
 @Schema({ timestamps: true })
 export class Product {
   @Prop({ required: true })
@@ -58,6 +84,9 @@ export class Product {
 
   @Prop({ default: 0 })
   reviews: number;
+
+  @Prop({ type: [ProductReviewSchema], default: [] })
+  productReviews: ProductReview[];
 
   @Prop({ default: '' })
   badge: string;

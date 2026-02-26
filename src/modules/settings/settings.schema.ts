@@ -59,7 +59,7 @@ export class Settings {
   @Prop({ default: true })
   whatsappEnabled: boolean;
 
-  @Prop({ default: '+974 5555 1234' })
+  @Prop({ default: '+97433689955' })
   whatsappNumber: string;
 
   @Prop({ 
