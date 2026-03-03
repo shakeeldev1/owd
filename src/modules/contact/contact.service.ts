@@ -13,10 +13,18 @@ export class ContactService {
   }
 
   async findAll(query: any = {}): Promise<{ messages: Contact[]; total: number }> {
-    const { page = 1, limit = 20, status } = query;
+    const { page = 1, limit = 20, status, search } = query;
 
     const filter: any = {};
     if (status) filter.status = status;
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { subject: { $regex: search, $options: 'i' } },
+        { message: { $regex: search, $options: 'i' } },
+      ];
+    }
 
     const [messages, total] = await Promise.all([
       this.contactModel
@@ -65,11 +73,14 @@ export class ContactService {
   }
 
   async getStats(): Promise<any> {
-    const [total, unread, replied] = await Promise.all([
+    const [total, unread, replied, read, archived] = await Promise.all([
       this.contactModel.countDocuments(),
       this.contactModel.countDocuments({ status: 'new' }),
       this.contactModel.countDocuments({ status: 'replied' }),
+      this.contactModel.countDocuments({ status: 'read' }),
+      this.contactModel.countDocuments({ status: 'archived' }),
     ]);
-    return { total, unread, replied };
+    const pending = Math.max(0, total - replied - archived);
+    return { total, unread, replied, read, archived, pending };
   }
 }

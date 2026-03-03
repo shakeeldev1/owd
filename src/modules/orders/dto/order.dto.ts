@@ -10,6 +10,7 @@ export const ORDER_PAYMENT_METHODS = [
   'visa',
   'mastercard',
   'apple_pay',
+  'bank_transfer',
   'local_gateway',
 ] as const;
 

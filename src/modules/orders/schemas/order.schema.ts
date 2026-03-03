@@ -90,7 +90,7 @@ export class Order {
 
   @Prop({
     default: 'cod',
-    enum: ['cod', 'cash', 'card_on_delivery', 'pos_machine', 'online', 'visa', 'mastercard', 'apple_pay', 'local_gateway'],
+    enum: ['cod', 'cash', 'card_on_delivery', 'pos_machine', 'online', 'visa', 'mastercard', 'apple_pay', 'bank_transfer', 'local_gateway'],
   })
   paymentMethod!: string;
 

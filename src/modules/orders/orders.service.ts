@@ -204,7 +204,7 @@ export class OrdersService {
     const loyaltyPoints = this.calculateLoyaltyPoints(total);
 
     const paymentMethod = dto.paymentMethod || 'cod';
-    const isOnlineMethod = ['online', 'visa', 'mastercard', 'apple_pay', 'local_gateway'].includes(paymentMethod);
+    const isOnlineMethod = ['online', 'visa', 'mastercard', 'apple_pay', 'bank_transfer', 'local_gateway'].includes(paymentMethod);
     const paymentStatus = isOnlineMethod && dto.paymentId ? 'paid' : 'pending';
 
     const customerName = dto.customer?.name?.trim() || user.fullName;
