@@ -1,5 +1,20 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, IsArray, ValidateNested, IsEnum, Min, IsBoolean } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsOptional, IsArray, ValidateNested, IsEnum, Min } from 'class-validator';
 import { Type } from 'class-transformer';
+
+export const ORDER_PAYMENT_METHODS = [
+  'cod',
+  'cash',
+  'card_on_delivery',
+  'pos_machine',
+  'online',
+  'visa',
+  'mastercard',
+  'apple_pay',
+  'local_gateway',
+] as const;
+
+export const ORDER_PAYMENT_STATUSES = ['pending', 'paid', 'failed', 'refunded', 'cod'] as const;
+export const ORDER_SALES_CHANNELS = ['website', 'delivery', 'store'] as const;
 
 export class OrderItemDto {
   @IsString() @IsOptional() product?: string;
@@ -23,8 +38,9 @@ export class CreateOrderDto {
   items!: OrderItemDto[];
 
   @IsString() @IsNotEmpty() shippingAddress!: string;
-  @IsString() @IsOptional() paymentMethod?: string;
+  @IsEnum(ORDER_PAYMENT_METHODS) @IsOptional() paymentMethod?: string;
   @IsString() @IsOptional() paymentId?: string;
+  @IsEnum(ORDER_SALES_CHANNELS) @IsOptional() salesChannel?: string;
   @IsString() @IsOptional() discountCode?: string;
   @IsString() @IsOptional() notes?: string;
 
@@ -36,10 +52,12 @@ export class CreateOrderDto {
 
 export class AdminCreateOrderDto {
   @IsString() @IsNotEmpty() customerName!: string;
-  @IsString() @IsNotEmpty() customerEmail!: string;
+  @IsString() @IsOptional() customerEmail?: string;
   @IsString() @IsOptional() customerPhone?: string;
   @IsString() @IsNotEmpty() shippingAddress!: string;
-  @IsString() @IsOptional() paymentMethod?: string;
+  @IsEnum(ORDER_PAYMENT_METHODS) @IsOptional() paymentMethod?: string;
+  @IsEnum(ORDER_PAYMENT_STATUSES) @IsOptional() paymentStatus?: string;
+  @IsEnum(ORDER_SALES_CHANNELS) @IsOptional() salesChannel?: string;
 
   @IsArray()
   @ValidateNested({ each: true })
@@ -57,6 +75,23 @@ export class UpdateOrderStatusDto {
 
 export class AssignDeliveryDto {
   @IsString() @IsNotEmpty() deliveryStaffId!: string;
+}
+
+export class UpdateOrderPaymentDto {
+  @IsEnum(ORDER_PAYMENT_STATUSES)
+  paymentStatus!: string;
+
+  @IsEnum(ORDER_PAYMENT_METHODS)
+  @IsOptional()
+  paymentMethod?: string;
+
+  @IsString()
+  @IsOptional()
+  paymentId?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
 }
 
 export class SubmitFeedbackDto {

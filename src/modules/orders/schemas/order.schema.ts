@@ -88,11 +88,23 @@ export class Order {
   })
   paymentStatus!: string;
 
-  @Prop({ default: 'cod', enum: ['cod', 'visa', 'mastercard', 'apple_pay', 'local_gateway'] })
+  @Prop({
+    default: 'cod',
+    enum: ['cod', 'cash', 'card_on_delivery', 'pos_machine', 'online', 'visa', 'mastercard', 'apple_pay', 'local_gateway'],
+  })
   paymentMethod!: string;
+
+  @Prop({ enum: ['website', 'delivery', 'store'], default: 'website' })
+  salesChannel!: string;
 
   @Prop({ default: '' })
   paymentId!: string;
+
+  @Prop({ type: Date })
+  paymentCompletedAt!: Date;
+
+  @Prop({ type: Date })
+  reviewRequestScheduledAt!: Date;
 
   @Prop({ default: '' })
   shippingAddress!: string;

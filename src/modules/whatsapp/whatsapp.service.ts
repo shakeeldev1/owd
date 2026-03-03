@@ -209,6 +209,25 @@ export class WhatsAppService {
     );
   }
 
+  async sendPaymentReceipt(
+    phone: string,
+    name: string,
+    orderNumber: string,
+    total: number,
+    paymentMethod: string,
+    items: Array<{ name?: string; quantity?: number }>,
+  ): Promise<void> {
+    const lines = (items || [])
+      .slice(0, 8)
+      .map((item) => `• ${item?.name || 'Item'} x${item?.quantity || 0}`)
+      .join('\n');
+
+    await this.sendMessage(
+      phone,
+      `🧾 *Payment Receipt*\n\nHello ${name},\nPayment has been completed for order *#${orderNumber}*.\n\n${lines}\n\n*Total:* ${total} QAR\n*Payment Method:* ${paymentMethod}\n\nThank you for choosing Al Fursan Oud 🌿`,
+    );
+  }
+
   async sendPromotion(phone: string, name: string, message: string): Promise<void> {
     await this.sendMessage(phone,
       `🎉 *Special Offer!*\n\nHello ${name},\n${message}\n\nAl Fursan Oud 🌿`

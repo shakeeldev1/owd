@@ -1,7 +1,14 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { OrdersService } from './orders.service';
-import { CreateOrderDto, AdminCreateOrderDto, UpdateOrderStatusDto, AssignDeliveryDto, SubmitFeedbackDto } from './dto/order.dto';
+import {
+  CreateOrderDto,
+  AdminCreateOrderDto,
+  UpdateOrderStatusDto,
+  AssignDeliveryDto,
+  SubmitFeedbackDto,
+  UpdateOrderPaymentDto,
+} from './dto/order.dto';
 import { RolesGuard, Roles } from '../auth/roles.guard';
 
 @Controller('orders')
@@ -70,10 +77,12 @@ export class OrdersController {
   findAll(
     @Query('search') search?: string,
     @Query('status') status?: string,
+    @Query('paymentStatus') paymentStatus?: string,
+    @Query('paymentMethod') paymentMethod?: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.ordersService.findAll({ search, status, page, limit });
+    return this.ordersService.findAll({ search, status, paymentStatus, paymentMethod, page, limit });
   }
 
   // Admin: Stats
@@ -113,6 +122,14 @@ export class OrdersController {
   @Roles('admin')
   updateStatus(@Param('id') id: string, @Body() dto: UpdateOrderStatusDto) {
     return this.ordersService.updateStatus(id, dto);
+  }
+
+  // Admin/Staff: Update payment status and method (COD/POS/card on delivery/cash)
+  @Patch(':id/payment')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin', 'staff')
+  updatePayment(@Request() req: any, @Param('id') id: string, @Body() dto: UpdateOrderPaymentDto) {
+    return this.ordersService.updatePayment(id, dto, req.user?.fullName || req.user?.role || 'system');
   }
 
   // Admin: Assign delivery staff

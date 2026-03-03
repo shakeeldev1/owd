@@ -90,6 +90,52 @@ export class MailService {
     await this.sendMail(to, `Order Confirmed #${orderNumber} - Al Fursan Oud`, html);
   }
 
+  async sendPaymentReceipt(
+    to: string,
+    name: string,
+    orderNumber: string,
+    total: number,
+    paymentMethod: string,
+    items: any[],
+  ): Promise<void> {
+    const itemsHtml = items.map(item => `
+      <tr>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;">${item.name}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:center;">${item.quantity}</td>
+        <td style="padding:8px;border-bottom:1px solid #e5e7eb;text-align:right;">${item.price} QAR</td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
+          <h1 style="color:#BA974F;margin:0;font-size:24px;">Al Fursan Oud</h1>
+          <p style="color:#94a3b8;margin:8px 0 0;">Digital Receipt</p>
+        </div>
+        <div style="padding:32px;">
+          <h2 style="color:#1a1a2e;margin:0 0 16px;">Thank you, ${name}!</h2>
+          <p style="color:#64748b;line-height:1.6;">Payment received for order <strong>#${orderNumber}</strong>.</p>
+          <p style="color:#64748b;line-height:1.6;"><strong>Payment Method:</strong> ${paymentMethod}</p>
+          <table style="width:100%;border-collapse:collapse;margin:24px 0;">
+            <thead>
+              <tr style="background:#f8fafc;">
+                <th style="padding:8px;text-align:left;color:#1a1a2e;">Product</th>
+                <th style="padding:8px;text-align:center;color:#1a1a2e;">Quantity</th>
+                <th style="padding:8px;text-align:right;color:#1a1a2e;">Price</th>
+              </tr>
+            </thead>
+            <tbody>${itemsHtml}</tbody>
+          </table>
+          <div style="background:#f8fafc;border-radius:8px;padding:16px;text-align:right;">
+            <strong style="font-size:18px;color:#1a1a2e;">Total Paid: ${total} QAR</strong>
+          </div>
+        </div>
+      </div>
+    `;
+
+    await this.sendMail(to, `Receipt #${orderNumber} - Al Fursan Oud`, html);
+  }
+
   async sendOrderStatusUpdate(to: string, name: string, orderNumber: string, status: string): Promise<void> {
     const statusMessages: Record<string, string> = {
       processing: 'Your order is being prepared.',

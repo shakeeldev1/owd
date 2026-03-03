@@ -3,7 +3,14 @@ import { InjectModel } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
 import { Model, Types } from 'mongoose';
 import { Order, OrderDocument } from './schemas/order.schema';
-import { CreateOrderDto, AdminCreateOrderDto, UpdateOrderStatusDto, AssignDeliveryDto, SubmitFeedbackDto } from './dto/order.dto';
+import {
+  CreateOrderDto,
+  AdminCreateOrderDto,
+  UpdateOrderStatusDto,
+  AssignDeliveryDto,
+  SubmitFeedbackDto,
+  UpdateOrderPaymentDto,
+} from './dto/order.dto';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
@@ -33,6 +40,89 @@ export class OrdersService {
   // ─── Calculate loyalty points (1 point per 10 QAR) ───
   private calculateLoyaltyPoints(total: number): number {
     return Math.floor(total / 10);
+  }
+
+  private isPaidStatus(status: string) {
+    return status === 'paid';
+  }
+
+  private async validateStock(items: any[]) {
+    for (const item of items) {
+      if (!item.product) {
+        throw new BadRequestException(`Product reference is required for item "${item.name}"`);
+      }
+
+      const product = await this.productModel.findById(item.product);
+      if (!product) {
+        throw new BadRequestException(`Product not found: ${item.name}`);
+      }
+      if (product.stock <= 0) {
+        throw new BadRequestException(`Product "${product.name}" is out of stock`);
+      }
+      if (product.stock < item.quantity) {
+        throw new BadRequestException(
+          `Insufficient stock for "${product.name}". Available: ${product.stock}, Requested: ${item.quantity}`,
+        );
+      }
+    }
+  }
+
+  private async sendPaymentReceiptAndScheduleReview(
+    order: OrderDocument,
+    customerEmail: string,
+    customerPhone: string,
+    customerName: string,
+  ) {
+    const paymentLabel = order.paymentMethod.replace(/_/g, ' ');
+
+    try {
+      await this.mailService.sendPaymentReceipt(
+        customerEmail,
+        customerName,
+        order.orderNumber,
+        order.total,
+        paymentLabel,
+        order.items as any,
+      );
+    } catch (e) { }
+
+    this.whatsAppService.sendPaymentReceipt(
+      customerPhone,
+      customerName,
+      order.orderNumber,
+      order.total,
+      paymentLabel,
+      order.items as any,
+    );
+
+    const delayHours = Number(this.configService.get('REVIEW_REQUEST_DELAY_HOURS', 24));
+    const delayMs = Math.max(0, Math.floor(delayHours * 60 * 60 * 1000));
+
+    await this.orderModel.findByIdAndUpdate(order._id, {
+      reviewRequestScheduledAt: new Date(Date.now() + delayMs),
+    });
+
+    setTimeout(async () => {
+      try {
+        const currentOrder = await this.orderModel.findById(order._id);
+        if (!currentOrder || currentOrder.feedbackRequested) return;
+
+        const googleReviewLink = this.configService.get('GOOGLE_REVIEW_LINK') || 'https://g.page/r/alfursan-oud/review';
+        await this.mailService.sendFeedbackRequest(
+          customerEmail,
+          customerName,
+          order.orderNumber,
+          googleReviewLink,
+        );
+        this.whatsAppService.sendFeedbackRequest(
+          customerPhone,
+          customerName,
+          order.orderNumber,
+          googleReviewLink,
+        );
+        await this.orderModel.findByIdAndUpdate(order._id, { feedbackRequested: true });
+      } catch (e) { }
+    }, delayMs);
   }
 
   // ─── Determine customer type based on order history ───
@@ -104,23 +194,7 @@ export class OrdersService {
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
-    // ─── Validate stock availability before placing order ───
-    for (const item of dto.items) {
-      if (item.product) {
-        const product = await this.productModel.findById(item.product);
-        if (!product) {
-          throw new BadRequestException(`Product not found: ${item.name}`);
-        }
-        if (product.stock <= 0) {
-          throw new BadRequestException(`Product "${product.name}" is out of stock`);
-        }
-        if (product.stock < item.quantity) {
-          throw new BadRequestException(
-            `Insufficient stock for "${product.name}". Available: ${product.stock}, Requested: ${item.quantity}`,
-          );
-        }
-      }
-    }
+    await this.validateStock(dto.items);
 
     const subtotal = dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const shippingCost = subtotal >= 500 ? 0 : 30;
@@ -128,7 +202,8 @@ export class OrdersService {
     const loyaltyPoints = this.calculateLoyaltyPoints(total);
 
     const paymentMethod = dto.paymentMethod || 'cod';
-    const paymentStatus = paymentMethod === 'cod' ? 'cod' : (dto.paymentId ? 'paid' : 'pending');
+    const isOnlineMethod = ['online', 'visa', 'mastercard', 'apple_pay', 'local_gateway'].includes(paymentMethod);
+    const paymentStatus = isOnlineMethod && dto.paymentId ? 'paid' : 'pending';
 
     const customerName = dto.customer?.name?.trim() || user.fullName;
     const customerEmail = dto.customer?.email?.trim() || user.email;
@@ -150,9 +225,11 @@ export class OrdersService {
       paymentMethod,
       paymentId: dto.paymentId || '',
       paymentStatus,
+      salesChannel: dto.salesChannel || 'website',
       discountCode: dto.discountCode || '',
       notes: dto.notes || '',
       loyaltyPointsEarned: loyaltyPoints,
+      paymentCompletedAt: this.isPaidStatus(paymentStatus) ? new Date() : undefined,
       statusHistory: [{ status: 'pending', timestamp: new Date(), note: 'Order placed' }],
     });
 
@@ -167,24 +244,26 @@ export class OrdersService {
     // Update customer CRM type
     await this.updateCustomerType(userId);
 
-    // Send order confirmation email
-    try {
-      await this.mailService.sendOrderConfirmation(
-        customerEmail,
+    if (this.isPaidStatus(paymentStatus)) {
+      await this.sendPaymentReceiptAndScheduleReview(order, customerEmail, customerPhone, customerName);
+    } else {
+      try {
+        await this.mailService.sendOrderConfirmation(
+          customerEmail,
+          customerName,
+          order.orderNumber,
+          order.total,
+          order.items as any,
+        );
+      } catch (e) { }
+
+      this.whatsAppService.sendOrderConfirmation(
+        customerPhone,
         customerName,
         order.orderNumber,
         order.total,
-        order.items as any,
       );
-    } catch (e) { /* email failure should not block order */ }
-
-    // Send WhatsApp confirmation
-    this.whatsAppService.sendOrderConfirmation(
-      customerPhone,
-      customerName,
-      order.orderNumber,
-      order.total,
-    );
+    }
 
     // Notify admins
     await this.notificationsService.notifyAdmins(
@@ -200,18 +279,25 @@ export class OrdersService {
   }
 
   async adminCreate(dto: AdminCreateOrderDto) {
+    await this.validateStock(dto.items);
+
     const subtotal = dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const total = subtotal;
 
-    let user = await this.userModel.findOne({ email: dto.customerEmail });
+    const email = dto.customerEmail?.trim() || `walkin-${Date.now()}@local.customer`;
+    let user = await this.userModel.findOne({ email });
     const userId = user?._id || new Types.ObjectId();
+
+    const paymentMethod = dto.paymentMethod || 'cash';
+    const paymentStatus = dto.paymentStatus || (['cash', 'pos_machine', 'card_on_delivery'].includes(paymentMethod) ? 'paid' : 'pending');
+    const orderStatus = this.isPaidStatus(paymentStatus) ? 'processing' : 'pending';
 
     const order = await this.orderModel.create({
       orderNumber: this.generateOrderNumber(),
       user: userId,
       customer: {
         name: dto.customerName,
-        email: dto.customerEmail,
+        email,
         phone: dto.customerPhone || '',
       },
       items: dto.items,
@@ -219,17 +305,28 @@ export class OrdersService {
       shippingCost: 0,
       total,
       shippingAddress: dto.shippingAddress,
-      paymentMethod: dto.paymentMethod || 'cod',
-      paymentStatus: 'paid',
-      status: 'processing',
+      paymentMethod,
+      paymentStatus,
+      status: orderStatus,
+      salesChannel: dto.salesChannel || 'store',
+      paymentCompletedAt: this.isPaidStatus(paymentStatus) ? new Date() : undefined,
       statusHistory: [
         { status: 'pending', timestamp: new Date(), note: 'Admin created order' },
-        { status: 'processing', timestamp: new Date(), note: 'Admin created order' },
+        { status: orderStatus, timestamp: new Date(), note: 'Admin created order' },
       ],
     });
 
     // Deduct stock
     await this.deductStock(dto.items);
+
+    if (this.isPaidStatus(paymentStatus)) {
+      await this.sendPaymentReceiptAndScheduleReview(
+        order,
+        email,
+        dto.customerPhone || '',
+        dto.customerName,
+      );
+    }
 
     return { message: 'Order created', order: this.formatOrder(order) };
   }
@@ -254,8 +351,8 @@ export class OrdersService {
     };
   }
 
-  async findAll(query: { search?: string; status?: string; page?: number; limit?: number }) {
-    const { search, status, page = 1, limit = 10 } = query;
+  async findAll(query: { search?: string; status?: string; paymentStatus?: string; paymentMethod?: string; page?: number; limit?: number }) {
+    const { search, status, paymentStatus, paymentMethod, page = 1, limit = 10 } = query;
     const filter: any = {};
 
     if (search) {
@@ -266,6 +363,8 @@ export class OrdersService {
       ];
     }
     if (status && status !== 'all') filter.status = status;
+    if (paymentStatus && paymentStatus !== 'all') filter.paymentStatus = paymentStatus;
+    if (paymentMethod && paymentMethod !== 'all') filter.paymentMethod = paymentMethod;
 
     const total = await this.orderModel.countDocuments(filter);
     const orders = await this.orderModel
@@ -320,7 +419,6 @@ export class OrdersService {
 
     // Status-specific updates
     if (dto.status === 'delivered') {
-      update.paymentStatus = 'paid';
       update.deliveredAt = new Date();
     }
     if (dto.status === 'cancelled') {
@@ -418,26 +516,6 @@ export class OrdersService {
           await this.updateCustomerType(user._id.toString());
         }
 
-        // Schedule feedback request (send immediately for now)
-        setTimeout(async () => {
-          try {
-            const googleReviewLink = this.configService.get('GOOGLE_REVIEW_LINK') || 'https://g.page/r/alfursan-oud/review';
-            await this.mailService.sendFeedbackRequest(
-              customerEmail,
-              customerName,
-              order.orderNumber,
-              googleReviewLink,
-            );
-            const reviewLink = this.configService.get('GOOGLE_REVIEW_LINK') || 'https://g.page/r/alfursan-oud/review';
-            this.whatsAppService.sendFeedbackRequest(
-              customerPhone,
-              customerName,
-              order.orderNumber,
-              reviewLink,
-            );
-            await this.orderModel.findByIdAndUpdate(id, { feedbackRequested: true });
-          } catch (e) { /* feedback failure should not affect order */ }
-        }, 2000);
         break;
 
       case 'cancelled':
@@ -459,6 +537,54 @@ export class OrdersService {
     }
 
     return { message: 'Order status updated', order: this.formatOrder(updatedOrder) };
+  }
+
+  async updatePayment(id: string, dto: UpdateOrderPaymentDto, updatedBy = 'admin') {
+    const order = await this.orderModel.findById(id);
+    if (!order) throw new NotFoundException('Order not found');
+
+    const previousPaymentStatus = order.paymentStatus;
+    const update: any = {
+      paymentStatus: dto.paymentStatus,
+    };
+
+    if (dto.paymentMethod) update.paymentMethod = dto.paymentMethod;
+    if (dto.paymentId) update.paymentId = dto.paymentId;
+    if (dto.paymentStatus === 'paid') update.paymentCompletedAt = new Date();
+
+    const historyEntry = {
+      status: `payment_${dto.paymentStatus}`,
+      timestamp: new Date(),
+      note: dto.notes || '',
+      updatedBy,
+    };
+
+    const updatedOrder = await this.orderModel.findByIdAndUpdate(
+      id,
+      {
+        $set: update,
+        $push: { statusHistory: historyEntry },
+      },
+      { new: true },
+    );
+
+    if (!updatedOrder) throw new NotFoundException('Order not found');
+
+    const user = await this.userModel.findById(order.user);
+    const customerPhone = order.customer?.phone || user?.phone || '';
+    const customerEmail = order.customer?.email || user?.email || '';
+    const customerName = order.customer?.name || user?.fullName || 'Customer';
+
+    if (this.isPaidStatus(dto.paymentStatus) && !this.isPaidStatus(previousPaymentStatus)) {
+      await this.sendPaymentReceiptAndScheduleReview(
+        updatedOrder,
+        customerEmail,
+        customerPhone,
+        customerName,
+      );
+    }
+
+    return { message: 'Order payment updated', order: this.formatOrder(updatedOrder) };
   }
 
   // ─── Assign delivery staff ───
@@ -611,7 +737,10 @@ export class OrdersService {
       status: o.status,
       paymentStatus: o.paymentStatus,
       paymentMethod: o.paymentMethod,
+      salesChannel: o.salesChannel,
       paymentId: o.paymentId,
+      paymentCompletedAt: o.paymentCompletedAt,
+      reviewRequestScheduledAt: o.reviewRequestScheduledAt,
       shippingAddress: o.shippingAddress,
       trackingNumber: o.trackingNumber,
       notes: o.notes,
