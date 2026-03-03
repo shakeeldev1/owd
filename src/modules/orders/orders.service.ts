@@ -13,6 +13,7 @@ import {
 } from './dto/order.dto';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
+import { Cart, CartDocument } from '../cart/schemas/cart.schema';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { MailService } from '../auth/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -23,6 +24,7 @@ export class OrdersService {
     @InjectModel(Order.name) private orderModel: Model<OrderDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
+    @InjectModel(Cart.name) private cartModel: Model<CartDocument>,
     private configService: ConfigService,
     private whatsAppService: WhatsAppService,
     private mailService: MailService,
@@ -235,6 +237,12 @@ export class OrdersService {
 
     // Deduct stock
     await this.deductStock(dto.items);
+
+    // Clear user cart after successful order placement
+    await this.cartModel.findOneAndUpdate(
+      { user: new Types.ObjectId(userId) },
+      { $set: { items: [] } },
+    );
 
     // Update user stats
     await this.userModel.findByIdAndUpdate(userId, {
