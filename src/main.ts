@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import type { Request, Response, NextFunction } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -33,10 +34,41 @@ async function bootstrap() {
   ];
 
   const frontendUrl = configService.get<string>('FRONTEND_URL');
+  const frontendUrls = configService.get<string>('FRONTEND_URLS');
 
   if (frontendUrl && !allowedOrigins.includes(frontendUrl)) {
     allowedOrigins.push(frontendUrl);
   }
+
+  if (frontendUrls) {
+    frontendUrls
+      .split(',')
+      .map((url) => url.trim())
+      .filter(Boolean)
+      .forEach((url) => {
+        if (!allowedOrigins.includes(url)) {
+          allowedOrigins.push(url);
+        }
+      });
+  }
+
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const requestOrigin = req.headers.origin;
+
+    if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+      res.header('Access-Control-Allow-Origin', requestOrigin);
+      res.header('Vary', 'Origin');
+      res.header('Access-Control-Allow-Credentials', 'true');
+      res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+      res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Accept-Language, Origin');
+    }
+
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+
+    next();
+  });
 
   app.enableCors({
     origin: allowedOrigins,
