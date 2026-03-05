@@ -50,6 +50,9 @@ export class Settings {
   @Prop({ default: true })
   cashOnDeliveryEnabled: boolean;
 
+  @Prop({ default: true })
+  skipCashEnabled: boolean;
+
   @Prop({ default: '200' })
   freeShippingThreshold: string;
 

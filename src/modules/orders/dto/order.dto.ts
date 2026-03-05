@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 
 export const ORDER_PAYMENT_METHODS = [
   'cod',
+  'skipcash',
   'cash',
   'card_on_delivery',
   'pos_machine',
@@ -98,4 +99,42 @@ export class UpdateOrderPaymentDto {
 export class SubmitFeedbackDto {
   @IsNumber() @Min(1) rating!: number;
   @IsString() @IsOptional() comment?: string;
+}
+
+export class CreateSkipCashSessionDto {
+  @IsString()
+  @IsOptional()
+  successUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  cancelUrl?: string;
+}
+
+export class CreateSkipCashCheckoutSessionDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemDto)
+  items!: OrderItemDto[];
+
+  @IsString() @IsNotEmpty() shippingAddress!: string;
+  @IsString() @IsOptional() discountCode?: string;
+  @IsString() @IsOptional() notes?: string;
+
+  @ValidateNested()
+  @Type(() => OrderCustomerDto)
+  @IsOptional()
+  customer?: OrderCustomerDto;
+
+  @IsString()
+  @IsOptional()
+  successUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  cancelUrl?: string;
+}
+
+export class SkipCashWebhookDto {
+  [key: string]: any;
 }

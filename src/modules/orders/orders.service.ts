@@ -10,10 +10,13 @@ import {
   AssignDeliveryDto,
   SubmitFeedbackDto,
   UpdateOrderPaymentDto,
+  CreateSkipCashSessionDto,
+  CreateSkipCashCheckoutSessionDto,
 } from './dto/order.dto';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { Cart, CartDocument } from '../cart/schemas/cart.schema';
+import { Settings, SettingsDocument } from '../settings/settings.schema';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { MailService } from '../auth/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -25,6 +28,7 @@ export class OrdersService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
     @InjectModel(Cart.name) private cartModel: Model<CartDocument>,
+    @InjectModel(Settings.name) private settingsModel: Model<SettingsDocument>,
     private configService: ConfigService,
     private whatsAppService: WhatsAppService,
     private mailService: MailService,
@@ -46,6 +50,419 @@ export class OrdersService {
 
   private isPaidStatus(status: string) {
     return status === 'paid';
+  }
+
+  private async ensurePaymentMethodEnabled(paymentMethod: string) {
+    const settings = await this.settingsModel.findOne().lean();
+    if (!settings) return;
+
+    const codEnabled = settings.cashOnDeliveryEnabled !== false;
+    const skipCashEnabled = (settings as any).skipCashEnabled !== false;
+
+    if (paymentMethod === 'cod' && !codEnabled) {
+      throw new BadRequestException('Cash on Delivery is currently disabled');
+    }
+
+    if (paymentMethod === 'skipcash' && !skipCashEnabled) {
+      throw new BadRequestException('SkipCash is currently disabled');
+    }
+  }
+
+  private normalizeSkipCashStatus(rawStatus: string): 'paid' | 'failed' | 'pending' {
+    const value = String(rawStatus || '').toLowerCase();
+    if (!value) return 'pending';
+    if (
+      value.includes('paid')
+      || value.includes('success')
+      || value.includes('succeeded')
+      || value.includes('captured')
+      || value.includes('approved')
+      || value.includes('complete')
+    ) {
+      return 'paid';
+    }
+    if (
+      value.includes('fail')
+      || value.includes('cancel')
+      || value.includes('declin')
+      || value.includes('error')
+      || value.includes('reject')
+    ) {
+      return 'failed';
+    }
+    return 'pending';
+  }
+
+  private extractSkipCashOrderRef(payload: any): string {
+    return String(
+      payload?.orderId
+      || payload?.order_id
+      || payload?.merchantOrderId
+      || payload?.merchant_order_id
+      || payload?.reference
+      || payload?.reference_id
+      || payload?.metadata?.orderId
+      || payload?.metadata?.order_id
+      || '',
+    );
+  }
+
+  private extractSkipCashMetadata(payload: any): any {
+    return payload?.metadata || payload?.metaData || payload?.merchantMetaData || payload?.merchant_metadata || {};
+  }
+
+  private buildSkipCashEndpointCandidates(configuredApiUrl: string): string[] {
+    return Array.from(new Set([
+      configuredApiUrl,
+      configuredApiUrl.replace('/v1/', '/api/v1/'),
+      configuredApiUrl.replace('/api/v1/', '/v1/'),
+      'https://api.skipcash.app/api/v1/payments',
+      'https://api.skipcash.app/v1/payments',
+    ]));
+  }
+
+  private async requestSkipCashSession(payload: any) {
+    const clientId = this.configService.get<string>('SKIPCASH_CLIENT_ID') || '';
+    if (!clientId) {
+      throw new BadRequestException('SKIPCASH_CLIENT_ID is not configured');
+    }
+
+    const configuredApiUrl = this.configService.get<string>('SKIPCASH_API_URL') || 'https://api.skipcash.app/api/v1/payments';
+    const authSecret = this.configService.get<string>('SKIPCASH_SECRET') || '';
+
+    const headers: Record<string, string> = {
+      'content-type': 'application/json',
+      'x-client-id': clientId,
+    };
+    if (authSecret) {
+      headers.authorization = `Bearer ${authSecret}`;
+    }
+
+    const endpointCandidates = this.buildSkipCashEndpointCandidates(configuredApiUrl);
+
+    let responseBody: any = {};
+    let responseStatus = 0;
+    let selectedEndpoint = endpointCandidates[0];
+    let ok = false;
+
+    for (const endpoint of endpointCandidates) {
+      selectedEndpoint = endpoint;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      responseStatus = response.status;
+      const responseText = await response.text();
+      try {
+        responseBody = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        responseBody = { raw: responseText };
+      }
+
+      if (response.ok) {
+        ok = true;
+        break;
+      }
+
+      if (response.status !== 404) {
+        break;
+      }
+    }
+
+    if (!ok) {
+      throw new BadRequestException(
+        `SkipCash session creation failed at ${selectedEndpoint} (${responseStatus}). Please verify SKIPCASH_API_URL and credentials.`,
+      );
+    }
+
+    const checkoutUrl =
+      responseBody?.checkoutUrl
+      || responseBody?.paymentUrl
+      || responseBody?.url
+      || responseBody?.redirectUrl
+      || responseBody?.data?.checkoutUrl
+      || responseBody?.data?.paymentUrl
+      || responseBody?.data?.url;
+
+    const paymentId =
+      responseBody?.paymentId
+      || responseBody?.transactionId
+      || responseBody?.id
+      || responseBody?.data?.paymentId
+      || responseBody?.data?.transactionId
+      || responseBody?.data?.id
+      || '';
+
+    if (!checkoutUrl) {
+      throw new BadRequestException('SkipCash response did not include a checkout URL');
+    }
+
+    const checkoutHost = (() => {
+      try {
+        return new URL(String(checkoutUrl)).host.toLowerCase();
+      } catch {
+        return '';
+      }
+    })();
+
+    if (!checkoutHost.includes('skipcash')) {
+      throw new BadRequestException('SkipCash did not return a valid hosted checkout URL. Payment was not processed. Please verify SKIPCASH credentials/config.');
+    }
+
+    return {
+      checkoutUrl: String(checkoutUrl),
+      paymentId: paymentId ? String(paymentId) : '',
+    };
+  }
+
+  async createSkipCashCheckoutSession(userId: string, dto: CreateSkipCashCheckoutSessionDto) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+
+    await this.ensurePaymentMethodEnabled('skipcash');
+    await this.validateStock(dto.items);
+
+    const subtotal = dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const shippingCost = subtotal >= 500 ? 0 : 30;
+    const total = subtotal + shippingCost;
+
+    const backendUrl = this.configService.get<string>('BACKEND_URL') || 'http://localhost:5000';
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+
+    const draftReference = `SKP-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const successUrl = dto?.successUrl?.trim() || `${frontendUrl}/checkout/skipcash/success?draftRef=${draftReference}`;
+    const cancelUrl = dto?.cancelUrl?.trim() || `${frontendUrl}/checkout/skipcash/cancel?draftRef=${draftReference}`;
+    const webhookUrl = `${backendUrl}/api/orders/skipcash/webhook`;
+
+    const draftOrder = {
+      userId,
+      orderData: {
+        items: dto.items,
+        shippingAddress: dto.shippingAddress,
+        paymentMethod: 'skipcash',
+        discountCode: dto.discountCode || '',
+        notes: dto.notes || '',
+        customer: dto.customer,
+      },
+    };
+    const draftToken = Buffer.from(JSON.stringify(draftOrder), 'utf8').toString('base64');
+
+    const payload = {
+      clientId: this.configService.get<string>('SKIPCASH_CLIENT_ID') || '',
+      amount: Number(total.toFixed(2)),
+      currency: 'QAR',
+      orderId: draftReference,
+      orderNumber: draftReference,
+      customer: {
+        name: dto.customer?.name?.trim() || user.fullName,
+        email: dto.customer?.email?.trim() || user.email,
+        phone: dto.customer?.phone?.trim() || user.phone || '',
+      },
+      successUrl,
+      cancelUrl,
+      webhookUrl,
+      metadata: {
+        draftReference,
+        draftToken,
+      },
+      merchantMetaData: {
+        draftReference,
+        draftToken,
+      },
+    };
+
+    const session = await this.requestSkipCashSession(payload);
+
+    return {
+      checkoutUrl: session.checkoutUrl,
+      paymentId: session.paymentId,
+      draftReference,
+    };
+  }
+
+  async createSkipCashSession(userId: string, orderId: string, dto?: CreateSkipCashSessionDto) {
+    const order = await this.orderModel.findById(orderId);
+    if (!order) throw new NotFoundException('Order not found');
+    if (String(order.user) !== String(userId)) {
+      throw new BadRequestException('Order does not belong to current user');
+    }
+    if (order.paymentMethod !== 'skipcash') {
+      throw new BadRequestException('SkipCash session can only be created for skipcash orders');
+    }
+
+    await this.ensurePaymentMethodEnabled('skipcash');
+
+    const backendUrl = this.configService.get<string>('BACKEND_URL') || 'http://localhost:5000';
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+
+    const successUrl = dto?.successUrl?.trim() || `${frontendUrl}/checkout/skipcash/success?orderId=${order._id}`;
+    const cancelUrl = dto?.cancelUrl?.trim() || `${frontendUrl}/checkout/skipcash/cancel?orderId=${order._id}`;
+    const webhookUrl = `${backendUrl}/api/orders/skipcash/webhook`;
+
+    const payload = {
+      clientId: this.configService.get<string>('SKIPCASH_CLIENT_ID') || '',
+      amount: Number(order.total.toFixed(2)),
+      currency: 'QAR',
+      orderId: String(order._id),
+      orderNumber: order.orderNumber,
+      customer: {
+        name: order.customer?.name || 'Customer',
+        email: order.customer?.email || '',
+        phone: order.customer?.phone || '',
+      },
+      successUrl,
+      cancelUrl,
+      webhookUrl,
+    };
+    const session = await this.requestSkipCashSession(payload);
+
+    const historyEntry = {
+      status: 'payment_session_created',
+      timestamp: new Date(),
+      note: 'SkipCash session initialized',
+      updatedBy: 'system',
+    };
+
+    await this.orderModel.findByIdAndUpdate(order._id, {
+      $set: session.paymentId ? { paymentId: String(session.paymentId) } : {},
+      $push: { statusHistory: historyEntry },
+    });
+
+    return {
+      orderId: String(order._id),
+      orderNumber: order.orderNumber,
+      checkoutUrl: String(session.checkoutUrl),
+      paymentId: session.paymentId ? String(session.paymentId) : '',
+    };
+  }
+
+  async processSkipCashWebhook(payload: any, webhookKeyHeader?: string) {
+    const expectedKey = this.configService.get<string>('SKIPCASH_WEBHOOK_KEY') || '';
+    if (expectedKey && webhookKeyHeader !== expectedKey) {
+      throw new BadRequestException('Invalid SkipCash webhook key');
+    }
+
+    const metadata = this.extractSkipCashMetadata(payload);
+    const draftTokenFromMetadata = String(metadata?.draftToken || metadata?.draft_token || '');
+    const orderRef = this.extractSkipCashOrderRef(payload);
+    if (!orderRef && !draftTokenFromMetadata) {
+      throw new BadRequestException('SkipCash webhook payload missing order reference and draft token');
+    }
+
+    let order = Types.ObjectId.isValid(orderRef)
+      ? await this.orderModel.findById(orderRef)
+      : null;
+
+    if (!order) {
+      order = await this.orderModel.findOne({ orderNumber: orderRef });
+    }
+
+    const paymentId = String(
+      payload?.paymentId
+      || payload?.payment_id
+      || payload?.transactionId
+      || payload?.transaction_id
+      || payload?.id
+      || order?.paymentId
+      || '',
+    );
+
+    const rawStatus = String(
+      payload?.status
+      || payload?.paymentStatus
+      || payload?.payment_status
+      || payload?.result
+      || payload?.event
+      || '',
+    );
+    const normalizedStatus = this.normalizeSkipCashStatus(rawStatus);
+
+    if (order) {
+      const result = await this.updatePayment(
+        String(order._id),
+        {
+          paymentStatus: normalizedStatus,
+          paymentMethod: 'skipcash',
+          paymentId,
+          notes: `SkipCash webhook: ${rawStatus || 'unknown status'}`,
+        },
+        'skipcash_webhook',
+      );
+
+      return {
+        message: 'SkipCash webhook processed',
+        status: normalizedStatus,
+        orderId: String(order._id),
+        orderNumber: order.orderNumber,
+        paymentId,
+        result,
+      };
+    }
+
+    if (normalizedStatus !== 'paid') {
+      return {
+        message: 'SkipCash webhook received for non-paid draft checkout',
+        status: normalizedStatus,
+        orderReference: orderRef,
+        paymentId,
+      };
+    }
+
+    const draftToken = draftTokenFromMetadata;
+    if (!draftToken) {
+      throw new NotFoundException('Order not found for SkipCash webhook and no draft checkout token provided');
+    }
+
+    let draftData: any;
+    try {
+      draftData = JSON.parse(Buffer.from(draftToken, 'base64').toString('utf8'));
+    } catch {
+      throw new BadRequestException('Invalid SkipCash draft checkout token');
+    }
+
+    if (!draftData?.userId || !draftData?.orderData) {
+      throw new BadRequestException('SkipCash draft checkout token is incomplete');
+    }
+
+    const existingByPaymentId = paymentId
+      ? await this.orderModel.findOne({ paymentId, paymentMethod: 'skipcash' })
+      : null;
+    if (existingByPaymentId) {
+      return {
+        message: 'SkipCash webhook already processed',
+        status: normalizedStatus,
+        orderId: String(existingByPaymentId._id),
+        orderNumber: existingByPaymentId.orderNumber,
+        paymentId,
+      };
+    }
+
+    const created = await this.create(draftData.userId, {
+      ...draftData.orderData,
+      paymentMethod: 'skipcash',
+      paymentId,
+    });
+
+    return {
+      message: 'SkipCash webhook processed and order created',
+      status: normalizedStatus,
+      paymentId,
+      result: created,
+    };
+  }
+
+  async deleteOrder(id: string) {
+    const order = await this.orderModel.findById(id);
+    if (!order) throw new NotFoundException('Order not found');
+
+    if (!['cancelled', 'delivered'].includes(order.status)) {
+      await this.restoreStock(order.items as any);
+    }
+
+    await this.orderModel.findByIdAndDelete(id);
+    return { message: 'Order deleted successfully' };
   }
 
   private async validateStock(items: any[]) {
@@ -204,7 +621,12 @@ export class OrdersService {
     const loyaltyPoints = this.calculateLoyaltyPoints(total);
 
     const paymentMethod = dto.paymentMethod || 'cod';
-    const isOnlineMethod = ['online', 'visa', 'mastercard', 'apple_pay', 'bank_transfer', 'local_gateway'].includes(paymentMethod);
+    const allowedWebsiteMethods = ['cod', 'skipcash'];
+    if (!allowedWebsiteMethods.includes(paymentMethod)) {
+      throw new BadRequestException('Unsupported payment method for website checkout');
+    }
+    await this.ensurePaymentMethodEnabled(paymentMethod);
+    const isOnlineMethod = ['online', 'visa', 'mastercard', 'apple_pay', 'bank_transfer', 'local_gateway', 'skipcash'].includes(paymentMethod);
     const paymentStatus = isOnlineMethod && dto.paymentId ? 'paid' : 'pending';
 
     const customerName = dto.customer?.name?.trim() || user.fullName;

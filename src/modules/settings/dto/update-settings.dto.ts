@@ -62,6 +62,10 @@ export class UpdateSettingsDto {
   cashOnDeliveryEnabled?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  skipCashEnabled?: boolean;
+
+  @IsOptional()
   @IsString()
   freeShippingThreshold?: string;
 

@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request, Headers, Delete } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { OrdersService } from './orders.service';
 import {
@@ -8,6 +8,8 @@ import {
   AssignDeliveryDto,
   SubmitFeedbackDto,
   UpdateOrderPaymentDto,
+  CreateSkipCashSessionDto,
+  CreateSkipCashCheckoutSessionDto,
 } from './dto/order.dto';
 import { RolesGuard, Roles } from '../auth/roles.guard';
 
@@ -20,6 +22,30 @@ export class OrdersController {
   @UseGuards(AuthGuard('jwt'))
   create(@Request() req: any, @Body() dto: CreateOrderDto) {
     return this.ordersService.create(req.user._id, dto);
+  }
+
+  // User: Create SkipCash session directly from checkout data (order created only after successful payment)
+  @Post('skipcash/session')
+  @UseGuards(AuthGuard('jwt'))
+  createSkipCashCheckoutSession(@Request() req: any, @Body() dto: CreateSkipCashCheckoutSessionDto) {
+    return this.ordersService.createSkipCashCheckoutSession(req.user._id, dto);
+  }
+
+  // User: Create SkipCash payment session for an order
+  @Post(':id/skipcash/session')
+  @UseGuards(AuthGuard('jwt'))
+  createSkipCashSession(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() dto: CreateSkipCashSessionDto,
+  ) {
+    return this.ordersService.createSkipCashSession(req.user._id, id, dto);
+  }
+
+  // Public: SkipCash webhook callback
+  @Post('skipcash/webhook')
+  skipCashWebhook(@Body() payload: any, @Headers('x-webhook-key') webhookKey?: string) {
+    return this.ordersService.processSkipCashWebhook(payload, webhookKey);
   }
 
   // User: My orders
@@ -138,5 +164,21 @@ export class OrdersController {
   @Roles('admin')
   assignDelivery(@Param('id') id: string, @Body() dto: AssignDeliveryDto) {
     return this.ordersService.assignDelivery(id, dto);
+  }
+
+  // Admin: Delete order
+  @Delete(':id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin')
+  deleteOrder(@Param('id') id: string) {
+    return this.ordersService.deleteOrder(id);
+  }
+
+  // Admin: Delete order (POST alias for environments where DELETE may be blocked)
+  @Post(':id/delete')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin')
+  deleteOrderAlias(@Param('id') id: string) {
+    return this.ordersService.deleteOrder(id);
   }
 }
