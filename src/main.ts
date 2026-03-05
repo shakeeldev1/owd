@@ -10,6 +10,7 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
 
+  // Global validation
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -19,6 +20,10 @@ async function bootstrap() {
     }),
   );
 
+  /**
+   * CORS Configuration
+   * Allow frontend from Vercel and local development
+   */
   const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:3001',
@@ -28,31 +33,37 @@ async function bootstrap() {
   ];
 
   const frontendUrl = configService.get<string>('FRONTEND_URL');
-  if (frontendUrl && frontendUrl !== 'https://oud-xi.vercel.app') {
+
+  if (frontendUrl && !allowedOrigins.includes(frontendUrl)) {
     allowedOrigins.push(frontendUrl);
   }
 
   app.enableCors({
-    origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept-Language'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Accept-Language',
+      'Origin',
+    ],
   });
 
+  // Global API prefix
   app.setGlobalPrefix('api');
 
+  // Static uploads folder
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
     prefix: '/uploads/',
   });
-  const port = process.env.PORT || 5000;
+
+  const port = configService.get<number>('PORT') || 5000;
+
   await app.listen(port, '0.0.0.0');
-  console.log(`🚀 Server running on port ${port}`);
+
+  console.log(`🚀 Server running on http://localhost:${port}`);
 }
 
 bootstrap();
