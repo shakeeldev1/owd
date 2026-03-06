@@ -49,7 +49,7 @@ export class CategoriesService {
 
   async update(id: string, dto: UpdateCategoryDto) {
     if (dto.name) (dto as any).slug = this.generateSlug(dto.name);
-    const category = await this.categoryModel.findByIdAndUpdate(id, { $set: dto }, { new: true });
+    const category = await this.categoryModel.findByIdAndUpdate(id, { $set: dto }, { returnDocument: 'after' });
     if (!category) throw new NotFoundException('Category not found');
     return { message: 'Category updated', category };
   }

@@ -23,6 +23,8 @@ export class WhatsAppService {
   private settingsCache: { whatsappEnabled: boolean; whatsappNumber: string } | null = null;
   private settingsCacheAt = 0;
   private readonly settingsCacheTtlMs = 60000;
+  private providerInactiveUntil = 0;
+  private readonly providerInactiveCooldownMs = 15 * 60 * 1000;
 
   constructor(
     private configService: ConfigService,
@@ -107,6 +109,11 @@ export class WhatsAppService {
       return true;
     }
 
+    if (Date.now() < this.providerInactiveUntil) {
+      console.warn('⚠️ WhatsApp provider currently inactive. Skipping send attempt.');
+      return false;
+    }
+
     const sanitizedMessage = this.sanitizeMessage(message);
     if (!sanitizedMessage) {
       console.warn('⚠️ WhatsApp message skipped: empty message payload');
@@ -127,6 +134,13 @@ export class WhatsAppService {
 
       if (!response.ok) {
         const error = await response.text();
+
+        if (error.toLowerCase().includes('user account inactive')) {
+          this.providerInactiveUntil = Date.now() + this.providerInactiveCooldownMs;
+          console.error('❌ WhatsApp provider account is inactive. Disabling sends temporarily for 15 minutes.');
+          return false;
+        }
+
         console.error('❌ WhatsApp send failed:', {
           status: response.status,
           phone: formattedPhone,
@@ -138,7 +152,15 @@ export class WhatsAppService {
       const contentType = response.headers.get('content-type') || '';
       if (contentType.includes('application/json')) {
         const data = await response.json();
-        if (data?.success === false) {
+        const providerRejected = data?.success === false || data?.status === false;
+        if (providerRejected) {
+          const providerMsg = String(data?.msg || data?.message || '').toLowerCase();
+          if (providerMsg.includes('inactive')) {
+            this.providerInactiveUntil = Date.now() + this.providerInactiveCooldownMs;
+            console.error('❌ WhatsApp provider account is inactive. Disabling sends temporarily for 15 minutes.');
+            return false;
+          }
+
           console.error('❌ WhatsApp provider rejected message:', data);
           return false;
         }

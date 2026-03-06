@@ -46,7 +46,7 @@ export class ContactService {
   }
 
   async markAsRead(id: string): Promise<Contact> {
-    const msg = await this.contactModel.findByIdAndUpdate(id, { status: 'read' }, { new: true });
+    const msg = await this.contactModel.findByIdAndUpdate(id, { status: 'read' }, { returnDocument: 'after' });
     if (!msg) throw new NotFoundException('Message not found');
     return msg;
   }
@@ -55,14 +55,14 @@ export class ContactService {
     const msg = await this.contactModel.findByIdAndUpdate(
       id,
       { adminReply: dto.adminReply, status: 'replied', repliedAt: new Date() },
-      { new: true },
+      { returnDocument: 'after' },
     );
     if (!msg) throw new NotFoundException('Message not found');
     return msg;
   }
 
   async archive(id: string): Promise<Contact> {
-    const msg = await this.contactModel.findByIdAndUpdate(id, { status: 'archived' }, { new: true });
+    const msg = await this.contactModel.findByIdAndUpdate(id, { status: 'archived' }, { returnDocument: 'after' });
     if (!msg) throw new NotFoundException('Message not found');
     return msg;
   }

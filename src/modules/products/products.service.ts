@@ -113,7 +113,7 @@ export class ProductsService {
       data.isNew = (dto as any).isNewArrival;
       delete data.isNewArrival;
     }
-    const product = await this.productModel.findByIdAndUpdate(id, { $set: data }, { new: true });
+    const product = await this.productModel.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after' });
     if (!product) throw new NotFoundException('Product not found');
     return { message: 'Product updated', product: this.formatAdminProduct(product) };
   }

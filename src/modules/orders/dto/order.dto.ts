@@ -133,6 +133,10 @@ export class CreateSkipCashCheckoutSessionDto {
   @IsString()
   @IsOptional()
   cancelUrl?: string;
+
+  @IsEnum(ORDER_PAYMENT_METHODS)
+  @IsOptional()
+  paymentMethod?: string;
 }
 
 export class SkipCashWebhookDto {

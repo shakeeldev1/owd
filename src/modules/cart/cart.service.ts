@@ -16,7 +16,7 @@ export class CartService {
     const cart = await this.cartModel.findOneAndUpdate(
       { user: new Types.ObjectId(userId) },
       { $setOnInsert: { items: [], wishlist: [] } },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
     return cart;
   }

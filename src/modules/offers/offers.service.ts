@@ -63,7 +63,7 @@ export class OffersService {
   }
 
   async update(id: string, dto: UpdateOfferDto): Promise<Offer> {
-    const offer = await this.offerModel.findByIdAndUpdate(id, dto, { new: true });
+    const offer = await this.offerModel.findByIdAndUpdate(id, dto, { returnDocument: 'after' });
     if (!offer) throw new NotFoundException('Offer not found');
     return offer;
   }

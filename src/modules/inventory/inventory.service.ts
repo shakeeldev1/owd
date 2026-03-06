@@ -82,7 +82,7 @@ export class InventoryService {
     const product = await this.productModel.findByIdAndUpdate(
       productId,
       { stock },
-      { new: true },
+      { returnDocument: 'after' },
     );
     if (!product) throw new NotFoundException('Product not found');
 
@@ -115,7 +115,7 @@ export class InventoryService {
       const product = await this.productModel.findByIdAndUpdate(
         update.productId,
         { stock: update.stock },
-        { new: true },
+        { returnDocument: 'after' },
       );
       if (product) {
         results.push({ id: product._id, name: product.name, stock: update.stock });
@@ -424,7 +424,7 @@ export class InventoryService {
         const product = await this.productModel.findOneAndUpdate(
           { $or: [{ sku }, { itemCode: sku }] },
           { $set: updateData },
-          { new: true },
+          { returnDocument: 'after' },
         );
 
         if (product) results.updated++;

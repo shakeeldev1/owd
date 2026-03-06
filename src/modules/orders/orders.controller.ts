@@ -44,7 +44,15 @@ export class OrdersController {
 
   // Public: SkipCash webhook callback
   @Post('skipcash/webhook')
-  skipCashWebhook(@Body() payload: any, @Headers('x-webhook-key') webhookKey?: string) {
+  skipCashWebhook(@Body() payload: any, @Headers() headers?: Record<string, string | string[]>) {
+    const webhookKey = String(
+      headers?.['x-webhook-key']
+      || headers?.['webhook-key']
+      || headers?.['x-skipcash-webhook-key']
+      || headers?.authorization
+      || '',
+    );
+
     return this.ordersService.processSkipCashWebhook(payload, webhookKey);
   }
 

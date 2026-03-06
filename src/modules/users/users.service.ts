@@ -33,7 +33,7 @@ export class UsersService {
     const user = await this.userModel.findByIdAndUpdate(
       userId,
       { $set: dto },
-      { new: true },
+      { returnDocument: 'after' },
     );
     if (!user) throw new NotFoundException('User not found');
 
@@ -63,7 +63,7 @@ export class UsersService {
     const user = await this.userModel.findByIdAndUpdate(
       userId,
       { $set: updateData },
-      { new: true },
+      { returnDocument: 'after' },
     );
     if (!user) throw new NotFoundException('User not found');
 
@@ -125,7 +125,7 @@ export class UsersService {
   }
 
   async adminUpdateUser(id: string, updateData: any) {
-    const user = await this.userModel.findByIdAndUpdate(id, { $set: updateData }, { new: true });
+    const user = await this.userModel.findByIdAndUpdate(id, { $set: updateData }, { returnDocument: 'after' });
     if (!user) throw new NotFoundException('User not found');
     return { message: 'User updated', user };
   }
