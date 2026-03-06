@@ -16,6 +16,40 @@ export class InventoryService {
     private mailService: MailService,
   ) {}
 
+  private normalizeImportHeader(header: any): string {
+    return String(header ?? '')
+      .replace(/^\uFEFF/, '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_\-()]+/g, '');
+  }
+
+  private findHeaderIndex(headers: any[], aliases: string[]): number {
+    const normalizedHeaders = headers.map((h) => this.normalizeImportHeader(h));
+    const normalizedAliases = aliases.map((a) => this.normalizeImportHeader(a));
+
+    for (const alias of normalizedAliases) {
+      const exact = normalizedHeaders.findIndex((h) => h === alias);
+      if (exact >= 0) return exact;
+
+      const fuzzy = normalizedHeaders.findIndex((h) => h.includes(alias) || alias.includes(h));
+      if (fuzzy >= 0) return fuzzy;
+    }
+
+    return -1;
+  }
+
+  private parseCellString(value: any): string {
+    return String(value ?? '').trim();
+  }
+
+  private parseCellNumber(value: any): number {
+    const normalized = String(value ?? '').replace(/,/g, '').trim();
+    if (!normalized) return NaN;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+
   // Get all inventory items with filters
   async getInventory(query: {
     search?: string;
@@ -185,7 +219,7 @@ export class InventoryService {
   async exportToExcel(): Promise<Buffer> {
     const products = await this.productModel
       .find()
-      .select('name nameAr sku itemCode stock price pricePerTola unit status categoryName sales lowStockThreshold')
+      .select('name nameAr sku itemCode stock price pricePerTola unit status categoryName sales lowStockThreshold image')
       .sort({ name: 1 });
 
     const data = products.map((p) => ({
@@ -196,6 +230,7 @@ export class InventoryService {
       'Available Quantity': p.stock,
       'Price per Unit': p.price,
       'Price per Tola/Piece': (p as any).pricePerTola || 0,
+      'Image URL': (p as any).image || '',
       SKU: p.sku,
       Category: p.categoryName,
       Status: p.status,
@@ -215,6 +250,7 @@ export class InventoryService {
       { wch: 18 }, // Quantity
       { wch: 14 }, // Price per Unit
       { wch: 18 }, // Price per Tola
+      { wch: 40 }, // Image URL
       { wch: 15 }, // SKU
       { wch: 20 }, // Category
       { wch: 10 }, // Status
@@ -229,7 +265,8 @@ export class InventoryService {
 
   // Import inventory from Excel (matches client's actual file format)
   // Client's Excel has header rows (company info) above the data table.
-  // Columns: Item Code | English Name | Arabic Name | Unit | Quantity | Price per gram | Price per tola
+  // Columns: Item Code | English Name | Arabic Name | Description EN | Description AR | Category | SKU
+  //          Unit | Quantity | Price per gram | Price per tola | Status | Low Stock Threshold | Image URL
   async importFromExcel(file: Buffer) {
     const workbook = XLSX.read(file, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
@@ -259,45 +296,26 @@ export class InventoryService {
     }
 
     // Map column indices by header names
-    const headers = rawData[headerRowIndex].map((h: any) => String(h || '').trim().toLowerCase());
+    const headers = rawData[headerRowIndex] || [];
     const colMap = {
-      itemCode: headers.findIndex((h: string) => h.includes('item code') || h === 'item_code'),
-      englishName: headers.findIndex((h: string) => h.includes('english') && h.includes('name')),
-      arabicName: headers.findIndex((h: string) => h.includes('arabic') && h.includes('name')),
-      unit: headers.findIndex((h: string) => h === 'unit' || h.includes('unit')),
-      quantity: headers.findIndex((h: string) => h.includes('quantity') || h.includes('الكمية') || h.includes('المتاحة')),
-      pricePerUnit: headers.findIndex((h: string) => h.includes('price') && (h.includes('gram') || h.includes('unit') || h.includes('الجرام'))),
-      pricePerTola: headers.findIndex((h: string) => h.includes('price') && (h.includes('tola') || h.includes('piece') || h.includes('التولة'))),
+      itemCode: this.findHeaderIndex(headers, ['item code', 'itemcode', 'item_code', 'code', 'رمزالعنصر']),
+      englishName: this.findHeaderIndex(headers, ['english name', 'name en', 'product name en', 'name']),
+      arabicName: this.findHeaderIndex(headers, ['arabic name', 'name ar', 'product name ar', 'الاسمالعربي']),
+      descriptionEn: this.findHeaderIndex(headers, ['description en', 'english description', 'descriptionenglish']),
+      descriptionAr: this.findHeaderIndex(headers, ['description ar', 'arabic description', 'descriptionarabic']),
+      category: this.findHeaderIndex(headers, ['category', 'category name', 'الفئة']),
+      sku: this.findHeaderIndex(headers, ['sku', 'product sku']),
+      unit: this.findHeaderIndex(headers, ['unit', 'الوحدة']),
+      quantity: this.findHeaderIndex(headers, ['available quantity', 'quantity', 'stock', 'الكمية', 'المتاحة']),
+      pricePerUnit: this.findHeaderIndex(headers, ['price per gram', 'price per unit', 'unit price', 'السعرلكلجرام']),
+      pricePerTola: this.findHeaderIndex(headers, ['price per tola', 'price per piece', 'السعرلكلتولة']),
+      status: this.findHeaderIndex(headers, ['status', 'الحالة']),
+      lowStockThreshold: this.findHeaderIndex(headers, ['low stock threshold', 'threshold', 'حدالمخزونالمنخفض']),
+      imageUrl: this.findHeaderIndex(headers, ['image url', 'image', 'photo', 'picture', 'رابطالصورة']),
     };
 
     // If we can't find quantity column by header name, look for numeric column after unit
     // Also try Arabic headers
-    if (colMap.quantity === -1) {
-      for (let i = 0; i < headers.length; i++) {
-        const h = headers[i];
-        if (h.includes('الكمية') || h.includes('المتاحة') || h.includes('بالجرام')) {
-          colMap.quantity = i;
-          break;
-        }
-      }
-    }
-    if (colMap.pricePerUnit === -1) {
-      for (let i = 0; i < headers.length; i++) {
-        if (headers[i].includes('سعر') && (headers[i].includes('الجرام') || headers[i].includes('الحبة'))) {
-          if (colMap.pricePerTola === -1 || i < colMap.pricePerTola) {
-            colMap.pricePerUnit = i;
-          }
-        }
-      }
-    }
-    if (colMap.pricePerTola === -1) {
-      for (let i = 0; i < headers.length; i++) {
-        if (headers[i].includes('سعر') && (headers[i].includes('التولة') || headers[i].includes('تولة'))) {
-          colMap.pricePerTola = i;
-        }
-      }
-    }
-
     const results = { created: 0, updated: 0, errors: 0, skipped: 0 };
     const lowStockAlerts: string[] = [];
 
@@ -307,21 +325,23 @@ export class InventoryService {
       if (!row || !row.length) continue;
 
       try {
-        const itemCode = colMap.itemCode >= 0 ? String(row[colMap.itemCode] || '').trim() : '';
-        const englishName = colMap.englishName >= 0 ? String(row[colMap.englishName] || '').trim() : '';
-        const arabicName = colMap.arabicName >= 0 ? String(row[colMap.arabicName] || '').trim() : '';
-        const unit = colMap.unit >= 0 ? String(row[colMap.unit] || 'Grams').trim() : 'Grams';
-        const quantity = colMap.quantity >= 0 ? parseFloat(row[colMap.quantity]) : NaN;
-        const pricePerUnit = colMap.pricePerUnit >= 0 ? parseFloat(row[colMap.pricePerUnit]) : NaN;
-        const pricePerTola = colMap.pricePerTola >= 0 ? parseFloat(row[colMap.pricePerTola]) : 0;
+        const itemCode = colMap.itemCode >= 0 ? this.parseCellString(row[colMap.itemCode]) : '';
+        const englishName = colMap.englishName >= 0 ? this.parseCellString(row[colMap.englishName]) : '';
+        const arabicName = colMap.arabicName >= 0 ? this.parseCellString(row[colMap.arabicName]) : '';
+        const descriptionEn = colMap.descriptionEn >= 0 ? this.parseCellString(row[colMap.descriptionEn]) : '';
+        const descriptionAr = colMap.descriptionAr >= 0 ? this.parseCellString(row[colMap.descriptionAr]) : '';
+        const category = colMap.category >= 0 ? this.parseCellString(row[colMap.category]) : '';
+        const skuFromFile = colMap.sku >= 0 ? this.parseCellString(row[colMap.sku]) : '';
+        const unit = colMap.unit >= 0 ? this.parseCellString(row[colMap.unit]) || 'Grams' : 'Grams';
+        const quantity = colMap.quantity >= 0 ? this.parseCellNumber(row[colMap.quantity]) : NaN;
+        const pricePerUnit = colMap.pricePerUnit >= 0 ? this.parseCellNumber(row[colMap.pricePerUnit]) : NaN;
+        const pricePerTola = colMap.pricePerTola >= 0 ? this.parseCellNumber(row[colMap.pricePerTola]) : NaN;
+        const statusRaw = colMap.status >= 0 ? this.parseCellString(row[colMap.status]).toLowerCase() : '';
+        const lowStockThreshold = colMap.lowStockThreshold >= 0 ? this.parseCellNumber(row[colMap.lowStockThreshold]) : NaN;
+        const imageUrl = colMap.imageUrl >= 0 ? this.parseCellString(row[colMap.imageUrl]) : '';
 
         // Skip rows without item code or name
         if (!itemCode && !englishName) {
-          results.skipped++;
-          continue;
-        }
-
-        if (isNaN(quantity)) {
           results.skipped++;
           continue;
         }
@@ -331,17 +351,30 @@ export class InventoryService {
         if (itemCode) {
           product = await this.productModel.findOne({ itemCode });
         }
+        if (!product && skuFromFile) {
+          product = await this.productModel.findOne({ sku: skuFromFile });
+        }
         if (!product && englishName) {
           product = await this.productModel.findOne({ name: { $regex: `^${englishName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } });
         }
 
-        const updateData: any = {
-          stock: Math.round(quantity * 100) / 100,
-        };
+        const updateData: any = {};
+        if (!isNaN(quantity)) updateData.stock = Math.round(quantity * 100) / 100;
+        if (englishName) updateData.name = englishName;
+        if (skuFromFile) updateData.sku = skuFromFile;
+        if (descriptionEn) updateData.description = descriptionEn;
+        if (descriptionAr) updateData.descriptionAr = descriptionAr;
+        if (category) updateData.categoryName = category;
         if (!isNaN(pricePerUnit) && pricePerUnit > 0) updateData.price = pricePerUnit;
-        if (pricePerTola && !isNaN(pricePerTola)) updateData.pricePerTola = pricePerTola;
+        if (!isNaN(pricePerTola) && pricePerTola > 0) updateData.pricePerTola = pricePerTola;
         if (unit) updateData.unit = unit;
         if (arabicName) updateData.nameAr = arabicName;
+        if (!isNaN(lowStockThreshold) && lowStockThreshold >= 0) updateData.lowStockThreshold = lowStockThreshold;
+        if (['active', 'draft', 'archived'].includes(statusRaw)) updateData.status = statusRaw;
+        if (imageUrl) {
+          updateData.image = imageUrl;
+          updateData.images = [imageUrl];
+        }
 
         if (product) {
           // Update existing product
@@ -357,26 +390,31 @@ export class InventoryService {
           await this.productModel.create({
             name: englishName || `Product ${itemCode}`,
             nameAr: arabicName || englishName || itemCode,
-            description: englishName || itemCode,
-            descriptionAr: arabicName || englishName || itemCode,
+            description: descriptionEn || englishName || itemCode,
+            descriptionAr: descriptionAr || arabicName || englishName || itemCode,
             price: !isNaN(pricePerUnit) && pricePerUnit > 0 ? pricePerUnit : 0,
             pricePerTola: pricePerTola && !isNaN(pricePerTola) ? pricePerTola : 0,
-            sku: itemCode || `SKU-${Date.now()}-${i}`,
+            sku: skuFromFile || itemCode || `SKU-${Date.now()}-${i}`,
             itemCode: itemCode,
             slug: slug || `product-${itemCode}-${Date.now()}`,
             unit: unit,
-            stock: Math.round(quantity * 100) / 100,
-            status: 'active',
-            lowStockThreshold: 10,
+            stock: !isNaN(quantity) ? Math.round(quantity * 100) / 100 : 0,
+            categoryName: category,
+            image: imageUrl || '',
+            images: imageUrl ? [imageUrl] : [],
+            status: ['active', 'draft', 'archived'].includes(statusRaw) ? statusRaw : 'active',
+            lowStockThreshold: !isNaN(lowStockThreshold) && lowStockThreshold >= 0 ? lowStockThreshold : 10,
           });
           results.created++;
         }
 
         // Check low stock
-        const currentStock = Math.round(quantity * 100) / 100;
-        const threshold = product ? ((product as any).lowStockThreshold || 10) : 10;
-        if (currentStock > 0 && currentStock <= threshold) {
-          lowStockAlerts.push(`${englishName || product?.name} (${currentStock} ${unit.toLowerCase()})`);
+        if (!isNaN(quantity)) {
+          const currentStock = Math.round(quantity * 100) / 100;
+          const threshold = product ? ((product as any).lowStockThreshold || 10) : 10;
+          if (currentStock > 0 && currentStock <= threshold) {
+            lowStockAlerts.push(`${englishName || product?.name} (${currentStock} ${unit.toLowerCase()})`);
+          }
         }
       } catch (err) {
         results.errors++;
@@ -409,20 +447,40 @@ export class InventoryService {
 
     for (const row of data) {
       try {
-        const sku = row.SKU || row.sku || row['Item Code'] || row.item_code;
-        const stock = parseFloat(row.Stock || row.stock || row['Available Quantity'] || row.quantity);
-        const price = parseFloat(row.Price || row.price || row['Price per Unit']);
+        const sku = this.parseCellString(row.SKU || row.sku || row['Item Code'] || row.item_code);
+        const name = this.parseCellString(row['English Name'] || row.name);
+        const nameAr = this.parseCellString(row['Arabic Name'] || row.nameAr || row.name_ar);
+        const description = this.parseCellString(row['Description EN'] || row.description);
+        const descriptionAr = this.parseCellString(row['Description AR'] || row.descriptionAr || row.description_ar);
+        const categoryName = this.parseCellString(row.Category || row.category);
+        const stock = this.parseCellNumber(row.Stock || row.stock || row['Available Quantity'] || row.quantity);
+        const price = this.parseCellNumber(row.Price || row.price || row['Price per Unit']);
+        const statusRaw = this.parseCellString(row.Status || row.status).toLowerCase();
+        const lowStockThreshold = this.parseCellNumber(row['Low Stock Threshold'] || row.lowStockThreshold || row.threshold);
+        const imageUrl = this.parseCellString(row['Image URL'] || row.image || row.imageUrl || row.photo);
 
-        if (!sku || isNaN(stock)) {
+        if (!sku && !name) {
           results.skipped++;
           continue;
         }
 
-        const updateData: any = { stock };
+        const updateData: any = {};
+        if (name) updateData.name = name;
+        if (nameAr) updateData.nameAr = nameAr;
+        if (description) updateData.description = description;
+        if (descriptionAr) updateData.descriptionAr = descriptionAr;
+        if (categoryName) updateData.categoryName = categoryName;
+        if (!isNaN(stock)) updateData.stock = stock;
         if (!isNaN(price) && price > 0) updateData.price = price;
+        if (['active', 'draft', 'archived'].includes(statusRaw)) updateData.status = statusRaw;
+        if (!isNaN(lowStockThreshold) && lowStockThreshold >= 0) updateData.lowStockThreshold = lowStockThreshold;
+        if (imageUrl) {
+          updateData.image = imageUrl;
+          updateData.images = [imageUrl];
+        }
 
         const product = await this.productModel.findOneAndUpdate(
-          { $or: [{ sku }, { itemCode: sku }] },
+          { $or: [{ sku }, { itemCode: sku }, ...(name ? [{ name: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } }] : [])] },
           { $set: updateData },
           { returnDocument: 'after' },
         );
