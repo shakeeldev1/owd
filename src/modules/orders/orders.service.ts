@@ -115,11 +115,7 @@ export class OrdersService {
     return Array.from(new Set([
       configuredApiUrl,
       configuredApiUrl.replace('/v1/', '/api/v1/'),
-      configuredApiUrl.replace('/api/v1/', '/v1/'),
       'https://api.skipcash.app/api/v1/payments',
-      'https://api.skipcash.app/v1/payments',
-      'https://api.skipcash.app/api/v1/checkouts',
-      'https://api.skipcash.app/v1/checkouts',
     ]));
   }
 
@@ -192,10 +188,60 @@ export class OrdersService {
     }
   }
 
+  private resolveSkipCashWebhookUrl(backendUrl: string): string {
+    const explicitWebhookUrl = (this.configService.get<string>('SKIPCASH_WEBHOOK_URL') || '').trim();
+    if (explicitWebhookUrl) {
+      return explicitWebhookUrl;
+    }
+
+    if (this.isPublicBackendUrl(backendUrl)) {
+      return `${backendUrl.replace(/\/+$/, '')}/api/orders/skipcash/webhook`;
+    }
+
+    // In localhost development, SkipCash session can still be created without webhook_url.
+    // Merchants can configure a dashboard webhook or provide SKIPCASH_WEBHOOK_URL via tunnel.
+    return '';
+  }
+
+  private resolveSkipCashReturnUrls(params: {
+    frontendUrl: string;
+    successPath: string;
+    cancelPath: string;
+    requestedSuccessUrl?: string;
+    requestedCancelUrl?: string;
+  }): { successUrl: string; cancelUrl: string } {
+    const {
+      frontendUrl,
+      successPath,
+      cancelPath,
+      requestedSuccessUrl,
+      requestedCancelUrl,
+    } = params;
+
+    const envSuccessUrl = (this.configService.get<string>('SKIPCASH_SUCCESS_URL') || '').trim();
+    const envCancelUrl = (this.configService.get<string>('SKIPCASH_CANCEL_URL') || '').trim();
+
+    const successUrl = (requestedSuccessUrl || '').trim()
+      || envSuccessUrl
+      || (this.isPublicBackendUrl(frontendUrl) ? `${frontendUrl.replace(/\/+$/, '')}${successPath}` : '');
+
+    const cancelUrl = (requestedCancelUrl || '').trim()
+      || envCancelUrl
+      || (this.isPublicBackendUrl(frontendUrl) ? `${frontendUrl.replace(/\/+$/, '')}${cancelPath}` : '');
+
+    return { successUrl, cancelUrl };
+  }
+
+  private getSkipCashClientIdentifiers(): string[] {
+    const keyId = (this.configService.get<string>('SKIPCASH_KEY_ID') || '').trim();
+    const clientId = (this.configService.get<string>('SKIPCASH_CLIENT_ID') || '').trim();
+    return Array.from(new Set([keyId, clientId].filter(Boolean)));
+  }
+
   private async requestSkipCashSession(payload: any) {
-    const clientId = this.configService.get<string>('SKIPCASH_CLIENT_ID') || '';
-    if (!clientId) {
-      throw new BadRequestException('SKIPCASH_CLIENT_ID is not configured');
+    const clientIdentifiers = this.getSkipCashClientIdentifiers();
+    if (clientIdentifiers.length === 0) {
+      throw new BadRequestException('SKIPCASH_KEY_ID or SKIPCASH_CLIENT_ID must be configured');
     }
 
     const configuredApiUrl = this.configService.get<string>('SKIPCASH_API_URL') || 'https://api.skipcash.app/api/v1/payments';
@@ -207,70 +253,93 @@ export class OrdersService {
     let responseBody: any = {};
     let responseStatus = 0;
     let selectedEndpoint = endpointCandidates[0];
+    let selectedClientIdentifier = '';
     let ok = false;
+    let shouldStopExploring = false;
 
     const secretCandidates = secrets.length > 0 ? secrets : [''];
 
     for (const endpoint of endpointCandidates) {
-      for (const secret of secretCandidates) {
-        const headers: Record<string, string> = {
-          'content-type': 'application/json',
-          'x-client-id': clientId,
-        };
+      for (const clientIdentifier of clientIdentifiers) {
+        for (const secret of secretCandidates) {
+          const headerCandidates: Record<string, string>[] = [
+            {
+              'content-type': 'application/json',
+              'x-client-id': clientIdentifier,
+            },
+            {
+              'content-type': 'application/json',
+              'x-key-id': clientIdentifier,
+            },
+          ];
 
-        if (secret) {
-          headers.authorization = `Bearer ${secret}`;
-          headers['x-api-key'] = secret;
-          headers['x-client-secret'] = secret;
-        }
+          for (const headers of headerCandidates) {
+            if (secret) {
+              headers.authorization = `Bearer ${secret}`;
+              headers['x-api-key'] = secret;
+              headers['x-client-secret'] = secret;
+            }
 
-        for (const payloadVariant of payloadCandidates) {
-          selectedEndpoint = endpoint;
+            for (const payloadVariant of payloadCandidates) {
+              selectedEndpoint = endpoint;
+              selectedClientIdentifier = clientIdentifier;
 
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(payloadVariant),
-          });
+              const response = await fetch(endpoint, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(payloadVariant),
+              });
 
-          responseStatus = response.status;
-          const responseText = await response.text();
-          try {
-            responseBody = responseText ? JSON.parse(responseText) : {};
-          } catch {
-            responseBody = { raw: responseText };
+              responseStatus = response.status;
+              const responseText = await response.text();
+              try {
+                responseBody = responseText ? JSON.parse(responseText) : {};
+              } catch {
+                responseBody = { raw: responseText };
+              }
+
+              if (response.ok) {
+                ok = true;
+                break;
+              }
+
+              // 404 usually means wrong endpoint path; continue to the next endpoint candidate.
+              if (response.status === 404) {
+                break;
+              }
+
+              // 401/403 can indicate wrong secret; try next secret if available.
+              if (response.status === 401 || response.status === 403) {
+                break;
+              }
+
+              // 400/422 can be payload-shape mismatch; continue trying payload variants.
+              if (response.status === 400 || response.status === 422) {
+                shouldStopExploring = true;
+              }
+            }
+
+            if (ok) break;
+            if (shouldStopExploring) break;
           }
 
-          if (response.ok) {
-            ok = true;
-            break;
-          }
+          if (ok) break;
+          if (shouldStopExploring) break;
 
-          // 404 usually means wrong endpoint path; continue to the next endpoint candidate.
-          if (response.status === 404) {
-            break;
+          if (responseStatus === 404 || responseStatus === 401 || responseStatus === 403) {
+            continue;
           }
-
-          // 401/403 can indicate wrong secret; try next secret if available.
-          if (response.status === 401 || response.status === 403) {
-            break;
-          }
-
-          // 400/422 can be payload-shape mismatch; continue trying payload variants.
         }
 
         if (ok) break;
-
-        if (responseStatus === 404 || responseStatus === 401 || responseStatus === 403) {
-          continue;
-        }
+        if (shouldStopExploring) break;
       }
 
       if (ok) {
         break;
       }
 
-      if (responseStatus !== 404 && responseStatus !== 401 && responseStatus !== 403) {
+      if (shouldStopExploring) {
         break;
       }
     }
@@ -281,12 +350,13 @@ export class OrdersService {
         || responseBody?.error
         || responseBody?.msg
         || responseBody?.detail
+        || (Array.isArray(responseBody?.errors) ? responseBody.errors.map((e: any) => String(e?.message || e?.msg || e || '')).filter(Boolean).join('; ') : '')
         || responseBody?.raw
         || '',
       ).trim();
 
       throw new BadRequestException(
-        `SkipCash session creation failed at ${selectedEndpoint} (${responseStatus}). ${providerMessage || 'Please verify SKIPCASH_API_URL, BACKEND_URL and credentials.'}`,
+        `SkipCash session creation failed at ${selectedEndpoint} (${responseStatus}) using id ${selectedClientIdentifier || 'n/a'}. ${providerMessage || 'Please verify SKIPCASH_API_URL, FRONTEND_URL return URLs, and SkipCash key id/secret.'}`,
       );
     }
 
@@ -344,14 +414,15 @@ export class OrdersService {
     const backendUrl = this.configService.get<string>('BACKEND_URL') || 'http://localhost:5000';
     const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
 
-    if (!this.isPublicBackendUrl(backendUrl)) {
-      throw new BadRequestException('BACKEND_URL must be a public URL for SkipCash webhooks. Localhost is not supported.');
-    }
-
     const draftReference = `SKP-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const successUrl = dto?.successUrl?.trim() || `${frontendUrl}/checkout/skipcash/success?draftRef=${draftReference}`;
-    const cancelUrl = dto?.cancelUrl?.trim() || `${frontendUrl}/checkout/skipcash/cancel?draftRef=${draftReference}`;
-    const webhookUrl = `${backendUrl}/api/orders/skipcash/webhook`;
+    const { successUrl, cancelUrl } = this.resolveSkipCashReturnUrls({
+      frontendUrl,
+      successPath: `/checkout/skipcash/success?draftRef=${draftReference}`,
+      cancelPath: `/checkout/skipcash/cancel?draftRef=${draftReference}`,
+      requestedSuccessUrl: dto?.successUrl,
+      requestedCancelUrl: dto?.cancelUrl,
+    });
+    const webhookUrl = this.resolveSkipCashWebhookUrl(backendUrl);
 
     const draftOrder = {
       userId,
@@ -367,8 +438,8 @@ export class OrdersService {
     const draftToken = Buffer.from(JSON.stringify(draftOrder), 'utf8').toString('base64');
 
     const payload = {
-      clientId: this.configService.get<string>('SKIPCASH_CLIENT_ID') || '',
-      amount: Number(total.toFixed(2)),
+      clientId: this.getSkipCashClientIdentifiers()[0] || '',
+      amount: total.toFixed(2),
       currency: 'QAR',
       orderId: draftReference,
       orderNumber: draftReference,
@@ -377,9 +448,9 @@ export class OrdersService {
         email: dto.customer?.email?.trim() || user.email,
         phone: dto.customer?.phone?.trim() || user.phone || '',
       },
-      successUrl,
-      cancelUrl,
-      webhookUrl,
+      ...(successUrl ? { successUrl } : {}),
+      ...(cancelUrl ? { cancelUrl } : {}),
+      ...(webhookUrl ? { webhookUrl } : {}),
       metadata: {
         draftReference,
         draftToken,
@@ -414,17 +485,18 @@ export class OrdersService {
     const backendUrl = this.configService.get<string>('BACKEND_URL') || 'http://localhost:5000';
     const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
 
-    if (!this.isPublicBackendUrl(backendUrl)) {
-      throw new BadRequestException('BACKEND_URL must be a public URL for SkipCash webhooks. Localhost is not supported.');
-    }
-
-    const successUrl = dto?.successUrl?.trim() || `${frontendUrl}/checkout/skipcash/success?orderId=${order._id}`;
-    const cancelUrl = dto?.cancelUrl?.trim() || `${frontendUrl}/checkout/skipcash/cancel?orderId=${order._id}`;
-    const webhookUrl = `${backendUrl}/api/orders/skipcash/webhook`;
+    const { successUrl, cancelUrl } = this.resolveSkipCashReturnUrls({
+      frontendUrl,
+      successPath: `/checkout/skipcash/success?orderId=${order._id}`,
+      cancelPath: `/checkout/skipcash/cancel?orderId=${order._id}`,
+      requestedSuccessUrl: dto?.successUrl,
+      requestedCancelUrl: dto?.cancelUrl,
+    });
+    const webhookUrl = this.resolveSkipCashWebhookUrl(backendUrl);
 
     const payload = {
-      clientId: this.configService.get<string>('SKIPCASH_CLIENT_ID') || '',
-      amount: Number(order.total.toFixed(2)),
+      clientId: this.getSkipCashClientIdentifiers()[0] || '',
+      amount: order.total.toFixed(2),
       currency: 'QAR',
       orderId: String(order._id),
       orderNumber: order.orderNumber,
@@ -433,9 +505,9 @@ export class OrdersService {
         email: order.customer?.email || '',
         phone: order.customer?.phone || '',
       },
-      successUrl,
-      cancelUrl,
-      webhookUrl,
+      ...(successUrl ? { successUrl } : {}),
+      ...(cancelUrl ? { cancelUrl } : {}),
+      ...(webhookUrl ? { webhookUrl } : {}),
     };
     const session = await this.requestSkipCashSession(payload);
 
