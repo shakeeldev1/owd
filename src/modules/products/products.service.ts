@@ -159,6 +159,34 @@ export class ProductsService {
     return products.map((p) => this.formatPublicProduct(p));
   }
 
+  async getTopReviews(limit = 6) {
+    const products = await this.productModel
+      .find({ status: 'active', 'productReviews.0': { $exists: true } })
+      .select('name nameAr slug productReviews')
+      .lean();
+
+    const allReviews: any[] = [];
+    for (const product of products) {
+      const reviews = (product as any).productReviews || [];
+      for (const review of reviews) {
+        if (review.rating >= 4) {
+          allReviews.push({
+            userName: review.userName,
+            rating: review.rating,
+            comment: review.comment,
+            productName: product.name,
+            productNameAr: (product as any).nameAr,
+            productSlug: (product as any).slug,
+            createdAt: review.createdAt,
+          });
+        }
+      }
+    }
+
+    allReviews.sort((a, b) => b.rating - a.rating || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return allReviews.slice(0, limit);
+  }
+
   async addReview(productId: string, user: any, dto: AddProductReviewDto) {
     if (!dto.rating || dto.rating < 1 || dto.rating > 5) {
       throw new ConflictException('Rating must be between 1 and 5');

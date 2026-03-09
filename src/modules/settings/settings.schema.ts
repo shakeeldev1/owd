@@ -5,14 +5,29 @@ export type SettingsDocument = Settings & Document;
 
 @Schema({ timestamps: true })
 export class Settings {
-  @Prop({ default: 'Al Fursan Oud' })
+  @Prop({ default: 'Oud Al Zubarah' })
   storeName: string;
 
-  @Prop({ default: 'contact@alfursanoud.com' })
+  @Prop({ default: 'info@oudalzubarah.qa' })
   storeEmail: string;
 
   @Prop({ default: '+974 4444 5555' })
   storePhone: string;
+
+  @Prop({ default: 'Pearl, Doha, Qatar' })
+  storeAddress: string;
+
+  @Prop({ default: 'Saturday - Thursday: 10AM - 10PM' })
+  storeHours: string;
+
+  @Prop({ default: '' })
+  instagramUrl: string;
+
+  @Prop({ default: '' })
+  twitterUrl: string;
+
+  @Prop({ default: '' })
+  facebookUrl: string;
 
   @Prop({ default: 'QAR' })
   currency: string;

@@ -4,7 +4,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import { User, UserDocument } from '../users/schemas/user.schema';
-import { SignupDto, LoginDto, VerifyOtpDto, ChangePasswordDto } from './dto';
+import { SignupDto, LoginDto, VerifyOtpDto, ChangePasswordDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
 import { MailService } from './mail.service';
 
 @Injectable()
@@ -177,5 +177,48 @@ export class AuthService {
       throw new UnauthorizedException('User not found or deactivated');
     }
     return user;
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const user = await this.userModel.findOne({ email: dto.email.toLowerCase() });
+    if (!user) {
+      // Return success even if user not found to prevent email enumeration
+      return { message: 'If an account exists with this email, a reset code has been sent.' };
+    }
+
+    const otp = this.generateOtp();
+    user.otp = otp;
+    user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    await user.save();
+
+    await this.mailService.sendPasswordResetEmail(user.email, otp, user.fullName);
+
+    return { message: 'If an account exists with this email, a reset code has been sent.' };
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const user = await this.userModel.findOne({ email: dto.email.toLowerCase() });
+    if (!user) {
+      throw new BadRequestException('Invalid reset request');
+    }
+
+    if (!user.otp || !user.otpExpiry) {
+      throw new BadRequestException('No reset code found. Please request a new one.');
+    }
+
+    if (new Date() > user.otpExpiry) {
+      throw new BadRequestException('Reset code has expired. Please request a new one.');
+    }
+
+    if (user.otp !== dto.otp) {
+      throw new BadRequestException('Invalid reset code');
+    }
+
+    user.password = await bcrypt.hash(dto.newPassword, 12);
+    user.otp = null as any;
+    user.otpExpiry = null as any;
+    await user.save();
+
+    return { message: 'Password reset successfully. You can now login with your new password.' };
   }
 }

@@ -18,10 +18,14 @@ export class MailService {
     } as any);
   }
 
+  private get brandName(): string {
+    return 'Oud Al Zubarah';
+  }
+
   async sendMail(to: string, subject: string, html: string): Promise<void> {
     try {
       await this.transporter.sendMail({
-        from: `"Al Fursan Oud" <${this.configService.get('SMTP_USER')}>`,
+        from: `"${this.brandName}" <${this.configService.get('SMTP_USER')}>`,
         to,
         subject,
         html,
@@ -35,7 +39,7 @@ export class MailService {
     const html = `
       <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
         <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
-          <h1 style="color:#BA974F;margin:0;font-size:24px;">Al Fursan Oud</h1>
+          <h1 style="color:#BA974F;margin:0;font-size:24px;">${this.brandName}</h1>
           <p style="color:#94a3b8;margin:8px 0 0;">Premium Oud & Fragrances</p>
         </div>
         <div style="padding:32px;">
@@ -49,7 +53,28 @@ export class MailService {
         </div>
       </div>
     `;
-    await this.sendMail(to, 'Verify Your Account - Al Fursan Oud', html);
+    await this.sendMail(to, `Verify Your Account - ${this.brandName}`, html);
+  }
+
+  async sendPasswordResetEmail(to: string, otp: string, name: string): Promise<void> {
+    const html = `
+      <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
+          <h1 style="color:#BA974F;margin:0;font-size:24px;">${this.brandName}</h1>
+          <p style="color:#94a3b8;margin:8px 0 0;">Password Reset</p>
+        </div>
+        <div style="padding:32px;">
+          <h2 style="color:#1a1a2e;margin:0 0 16px;">Hello ${name},</h2>
+          <p style="color:#64748b;line-height:1.6;">We received a request to reset your password. Use the code below:</p>
+          <div style="background:#f8fafc;border:2px dashed #BA974F;border-radius:12px;padding:24px;text-align:center;margin:24px 0;">
+            <span style="font-size:36px;font-weight:bold;letter-spacing:8px;color:#1a1a2e;">${otp}</span>
+          </div>
+          <p style="color:#64748b;line-height:1.6;">This code expires in <strong>10 minutes</strong>.</p>
+          <p style="color:#94a3b8;font-size:12px;margin-top:24px;">If you didn't request a password reset, please ignore this email. Your password will not be changed.</p>
+        </div>
+      </div>
+    `;
+    await this.sendMail(to, `Reset Your Password - ${this.brandName}`, html);
   }
 
   async sendOrderConfirmation(to: string, name: string, orderNumber: string, total: number, items: any[]): Promise<void> {
@@ -64,7 +89,7 @@ export class MailService {
     const html = `
       <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
         <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
-          <h1 style="color:#BA974F;margin:0;font-size:24px;">Al Fursan Oud</h1>
+          <h1 style="color:#BA974F;margin:0;font-size:24px;">${this.brandName}</h1>
           <p style="color:#94a3b8;margin:8px 0 0;">Order Confirmation</p>
         </div>
         <div style="padding:32px;">
@@ -87,7 +112,7 @@ export class MailService {
         </div>
       </div>
     `;
-    await this.sendMail(to, `Order Confirmed #${orderNumber} - Al Fursan Oud`, html);
+    await this.sendMail(to, `Order Confirmed #${orderNumber} - ${this.brandName}`, html);
   }
 
   async sendPaymentReceipt(
@@ -109,7 +134,7 @@ export class MailService {
     const html = `
       <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
         <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
-          <h1 style="color:#BA974F;margin:0;font-size:24px;">Al Fursan Oud</h1>
+          <h1 style="color:#BA974F;margin:0;font-size:24px;">${this.brandName}</h1>
           <p style="color:#94a3b8;margin:8px 0 0;">Digital Receipt</p>
         </div>
         <div style="padding:32px;">
@@ -133,7 +158,7 @@ export class MailService {
       </div>
     `;
 
-    await this.sendMail(to, `Receipt #${orderNumber} - Al Fursan Oud`, html);
+    await this.sendMail(to, `Receipt #${orderNumber} - ${this.brandName}`, html);
   }
 
   async sendOrderStatusUpdate(to: string, name: string, orderNumber: string, status: string): Promise<void> {
@@ -147,7 +172,7 @@ export class MailService {
     const html = `
       <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
         <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
-          <h1 style="color:#BA974F;margin:0;font-size:24px;">Al Fursan Oud</h1>
+          <h1 style="color:#BA974F;margin:0;font-size:24px;">${this.brandName}</h1>
           <p style="color:#94a3b8;margin:8px 0 0;">Order Update</p>
         </div>
         <div style="padding:32px;">
@@ -160,14 +185,14 @@ export class MailService {
         </div>
       </div>
     `;
-    await this.sendMail(to, `Order #${orderNumber} - ${status.charAt(0).toUpperCase() + status.slice(1)} - Al Fursan Oud`, html);
+    await this.sendMail(to, `Order #${orderNumber} - ${status.charAt(0).toUpperCase() + status.slice(1)} - ${this.brandName}`, html);
   }
 
   async sendFeedbackRequest(to: string, name: string, orderNumber: string, googleReviewLink: string): Promise<void> {
     const html = `
       <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
         <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
-          <h1 style="color:#BA974F;margin:0;font-size:24px;">Al Fursan Oud</h1>
+          <h1 style="color:#BA974F;margin:0;font-size:24px;">${this.brandName}</h1>
           <p style="color:#94a3b8;margin:8px 0 0;">We Value Your Feedback</p>
         </div>
         <div style="padding:32px;">
@@ -181,7 +206,7 @@ export class MailService {
         </div>
       </div>
     `;
-    await this.sendMail(to, 'How was your order? - Al Fursan Oud', html);
+    await this.sendMail(to, 'How was your order? - ${this.brandName}', html);
   }
 
   async sendLowStockAlert(productName: string, currentStock: number, unit: string): Promise<void> {
@@ -191,7 +216,7 @@ export class MailService {
     const html = `
       <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
         <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
-          <h1 style="color:#BA974F;margin:0;font-size:24px;">Al Fursan Oud</h1>
+          <h1 style="color:#BA974F;margin:0;font-size:24px;">${this.brandName}</h1>
           <p style="color:#94a3b8;margin:8px 0 0;">Low Stock Alert</p>
         </div>
         <div style="padding:32px;">
@@ -209,7 +234,7 @@ export class MailService {
         </div>
       </div>
     `;
-    await this.sendMail(adminEmail, `⚠️ Low Stock: ${productName} - Al Fursan Oud`, html);
+    await this.sendMail(adminEmail, `⚠️ Low Stock: ${productName} - ${this.brandName}`, html);
   }
 
   async sendLowStockBulkAlert(items: string[]): Promise<void> {
@@ -221,7 +246,7 @@ export class MailService {
     const html = `
       <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
         <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
-          <h1 style="color:#BA974F;margin:0;font-size:24px;">Al Fursan Oud</h1>
+          <h1 style="color:#BA974F;margin:0;font-size:24px;">${this.brandName}</h1>
           <p style="color:#94a3b8;margin:8px 0 0;">Low Stock Report</p>
         </div>
         <div style="padding:32px;">
@@ -236,6 +261,6 @@ export class MailService {
         </div>
       </div>
     `;
-    await this.sendMail(adminEmail, `⚠️ Low Stock Alert: ${items.length} items - Al Fursan Oud`, html);
+    await this.sendMail(adminEmail, `⚠️ Low Stock Alert: ${items.length} items - ${this.brandName}`, html);
   }
 }

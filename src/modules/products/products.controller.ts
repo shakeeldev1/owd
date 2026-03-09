@@ -38,6 +38,11 @@ export class ProductsController {
     return this.productsService.getTopProducts(limit);
   }
 
+  @Get('top-reviews')
+  getTopReviews(@Query('limit') limit?: number) {
+    return this.productsService.getTopReviews(limit);
+  }
+
   @Get('slug/:slug')
   findBySlug(@Param('slug') slug: string) {
     return this.productsService.findBySlug(slug);
