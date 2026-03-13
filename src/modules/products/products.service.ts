@@ -55,7 +55,18 @@ export class ProductsService {
     }
 
     if (category && category !== 'all') {
-      mongoFilter.categoryName = { $regex: category, $options: 'i' };
+      const normalizedCategory = String(category).trim();
+      const spacedCategory = normalizedCategory.replace(/[-_]+/g, ' ');
+
+      mongoFilter.$and = [
+        ...(mongoFilter.$and || []),
+        {
+          $or: [
+            { categoryName: { $regex: normalizedCategory, $options: 'i' } },
+            { categoryName: { $regex: spacedCategory, $options: 'i' } },
+          ],
+        },
+      ];
     }
 
     if (status) mongoFilter.status = status;
