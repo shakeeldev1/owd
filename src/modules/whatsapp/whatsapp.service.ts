@@ -175,58 +175,58 @@ export class WhatsAppService {
   }
 
   // Order lifecycle messages
-  async sendOrderConfirmation(phone: string, name: string, orderNumber: string, total: number): Promise<void> {
-    await this.sendMessage(phone, 
+  async sendOrderConfirmation(phone: string, name: string, orderNumber: string, total: number): Promise<boolean> {
+    return this.sendMessage(phone, 
       `🛍️ *Order Confirmed!*\n\nHello ${name},\nYour order *#${orderNumber}* has been placed successfully.\nTotal: *${total} QAR*\n\nThank you for shopping with Al Fursan Oud! 🌿`
     );
   }
 
-  async sendOrderProcessing(phone: string, name: string, orderNumber: string): Promise<void> {
-    await this.sendMessage(phone,
+  async sendOrderProcessing(phone: string, name: string, orderNumber: string): Promise<boolean> {
+    return this.sendMessage(phone,
       `📦 *Order Being Prepared*\n\nHello ${name},\nYour order *#${orderNumber}* is now being prepared.\n\nWe'll notify you when it's ready for delivery! 🌿`
     );
   }
 
-  async sendOrderShipped(phone: string, name: string, orderNumber: string, trackingNumber?: string): Promise<void> {
+  async sendOrderShipped(phone: string, name: string, orderNumber: string, trackingNumber?: string): Promise<boolean> {
     let msg = `🚚 *Out for Delivery!*\n\nHello ${name},\nYour order *#${orderNumber}* is on its way!`;
     if (trackingNumber) msg += `\nTracking: *${trackingNumber}*`;
     msg += `\n\nAl Fursan Oud 🌿`;
-    await this.sendMessage(phone, msg);
+    return this.sendMessage(phone, msg);
   }
 
-  async sendOrderDelivered(phone: string, name: string, orderNumber: string): Promise<void> {
-    await this.sendMessage(phone,
+  async sendOrderDelivered(phone: string, name: string, orderNumber: string): Promise<boolean> {
+    return this.sendMessage(phone,
       `✅ *Order Delivered!*\n\nHello ${name},\nYour order *#${orderNumber}* has been delivered.\n\nWe hope you enjoy your purchase! Please rate your experience.\n\nAl Fursan Oud 🌿`
     );
   }
 
-  async sendOrderCancelled(phone: string, name: string, orderNumber: string): Promise<void> {
-    await this.sendMessage(phone,
+  async sendOrderCancelled(phone: string, name: string, orderNumber: string): Promise<boolean> {
+    return this.sendMessage(phone,
       `❌ *Order Cancelled*\n\nHello ${name},\nYour order *#${orderNumber}* has been cancelled.\n\nIf you have questions, please contact us.\n\nAl Fursan Oud 🌿`
     );
   }
 
   // Staff notifications
-  async sendNewOrderAlert(phone: string, orderNumber: string, total: number): Promise<void> {
-    await this.sendMessage(phone,
+  async sendNewOrderAlert(phone: string, orderNumber: string, total: number): Promise<boolean> {
+    return this.sendMessage(phone,
       `🔔 *New Order!*\n\nOrder *#${orderNumber}* received.\nTotal: *${total} QAR*\n\nPlease check the admin panel.`
     );
   }
 
-  async sendDeliveryAssignment(phone: string, staffName: string, orderNumber: string, address: string): Promise<void> {
-    await this.sendMessage(phone,
+  async sendDeliveryAssignment(phone: string, staffName: string, orderNumber: string, address: string): Promise<boolean> {
+    return this.sendMessage(phone,
       `📋 *New Delivery Assignment*\n\nHello ${staffName},\nOrder *#${orderNumber}* assigned to you.\nAddress: ${address}\n\nPlease update status when completed.`
     );
   }
 
-  async sendLowStockAlert(phone: string, productName: string, currentStock: number): Promise<void> {
-    await this.sendMessage(phone,
+  async sendLowStockAlert(phone: string, productName: string, currentStock: number): Promise<boolean> {
+    return this.sendMessage(phone,
       `⚠️ *Low Stock Alert*\n\n*${productName}* has only *${currentStock}* items left.\n\nPlease restock soon.`
     );
   }
 
-  async sendFeedbackRequest(phone: string, name: string, orderNumber: string, googleReviewLink: string): Promise<void> {
-    await this.sendMessage(phone,
+  async sendFeedbackRequest(phone: string, name: string, orderNumber: string, googleReviewLink: string): Promise<boolean> {
+    return this.sendMessage(phone,
       `⭐ *How was your experience?*\n\nHello ${name},\nWe'd love your feedback on order *#${orderNumber}*.\n\nLeave a review: ${googleReviewLink}\n\nThank you! 🌿`
     );
   }
@@ -238,26 +238,26 @@ export class WhatsAppService {
     total: number,
     paymentMethod: string,
     items: Array<{ name?: string; quantity?: number }>,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const lines = (items || [])
       .slice(0, 8)
       .map((item) => `• ${item?.name || 'Item'} x${item?.quantity || 0}`)
       .join('\n');
 
-    await this.sendMessage(
+    return this.sendMessage(
       phone,
       `🧾 *Payment Receipt*\n\nHello ${name},\nPayment has been completed for order *#${orderNumber}*.\n\n${lines}\n\n*Total:* ${total} QAR\n*Payment Method:* ${paymentMethod}\n\nThank you for choosing Al Fursan Oud 🌿`,
     );
   }
 
-  async sendPromotion(phone: string, name: string, message: string): Promise<void> {
-    await this.sendMessage(phone,
+  async sendPromotion(phone: string, name: string, message: string): Promise<boolean> {
+    return this.sendMessage(phone,
       `🎉 *Special Offer!*\n\nHello ${name},\n${message}\n\nAl Fursan Oud 🌿`
     );
   }
 
-  async sendLoyaltyUpdate(phone: string, name: string, points: number, tier: string): Promise<void> {
-    await this.sendMessage(phone,
+  async sendLoyaltyUpdate(phone: string, name: string, points: number, tier: string): Promise<boolean> {
+    return this.sendMessage(phone,
       `🏆 *Loyalty Update*\n\nHello ${name},\nYou now have *${points} points*!\nTier: *${tier}*\n\nKeep shopping to earn more rewards! 🌿`
     );
   }

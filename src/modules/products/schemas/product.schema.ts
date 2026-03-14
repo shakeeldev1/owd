@@ -95,7 +95,7 @@ export class Product {
   badgeAr: string;
 
   @Prop({ default: false })
-  isNew: boolean;
+  isNewArrival: boolean;
 
   @Prop({ default: false })
   isBestseller: boolean;

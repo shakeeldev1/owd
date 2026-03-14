@@ -206,7 +206,7 @@ export class MailService {
         </div>
       </div>
     `;
-    await this.sendMail(to, 'How was your order? - ${this.brandName}', html);
+    await this.sendMail(to, `How was your order? - ${this.brandName}`, html);
   }
 
   async sendLowStockAlert(productName: string, currentStock: number, unit: string): Promise<void> {

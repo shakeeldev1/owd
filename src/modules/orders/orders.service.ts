@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
 import { Model, Types } from 'mongoose';
@@ -50,6 +50,18 @@ export class OrdersService {
 
   private isPaidStatus(status: string) {
     return status === 'paid';
+  }
+
+  private isDuplicatePaymentIdError(error: any): boolean {
+    return error?.code === 11000
+      && (
+        !!error?.keyPattern?.paymentId
+        || String(error?.message || '').includes('paymentId')
+      );
+  }
+
+  private logWhatsAppFailure(action: string, orderNumber: string) {
+    console.warn(`⚠️ WhatsApp ${action} notification failed for order ${orderNumber}`);
   }
 
   private async ensurePaymentMethodEnabled(paymentMethod: string) {
@@ -574,6 +586,19 @@ export class OrdersService {
     );
     const normalizedStatus = this.normalizeSkipCashStatus(rawStatus);
 
+    if (paymentId && normalizedStatus === 'paid') {
+      const existingByPaymentId = await this.orderModel.findOne({ paymentId, paymentMethod: 'skipcash' });
+      if (existingByPaymentId) {
+        return {
+          message: 'SkipCash webhook already processed',
+          status: normalizedStatus,
+          orderId: String(existingByPaymentId._id),
+          orderNumber: existingByPaymentId.orderNumber,
+          paymentId,
+        };
+      }
+    }
+
     if (order) {
       const result = await this.updatePayment(
         String(order._id),
@@ -621,24 +646,28 @@ export class OrdersService {
       throw new BadRequestException('SkipCash draft checkout token is incomplete');
     }
 
-    const existingByPaymentId = paymentId
-      ? await this.orderModel.findOne({ paymentId, paymentMethod: 'skipcash' })
-      : null;
-    if (existingByPaymentId) {
-      return {
-        message: 'SkipCash webhook already processed',
-        status: normalizedStatus,
-        orderId: String(existingByPaymentId._id),
-        orderNumber: existingByPaymentId.orderNumber,
+    let created: any;
+    try {
+      created = await this.create(draftData.userId, {
+        ...draftData.orderData,
+        paymentMethod: 'skipcash',
         paymentId,
-      };
+      });
+    } catch (error: any) {
+      if (this.isDuplicatePaymentIdError(error) && paymentId) {
+        const existing = await this.orderModel.findOne({ paymentId, paymentMethod: 'skipcash' });
+        if (existing) {
+          return {
+            message: 'SkipCash webhook already processed',
+            status: normalizedStatus,
+            orderId: String(existing._id),
+            orderNumber: existing.orderNumber,
+            paymentId,
+          };
+        }
+      }
+      throw error;
     }
-
-    const created = await this.create(draftData.userId, {
-      ...draftData.orderData,
-      paymentMethod: 'skipcash',
-      paymentId,
-    });
 
     return {
       message: 'SkipCash webhook processed and order created',
@@ -700,7 +729,7 @@ export class OrdersService {
       );
     } catch (e) { }
 
-    this.whatsAppService.sendPaymentReceipt(
+    const paymentReceiptSent = await this.whatsAppService.sendPaymentReceipt(
       customerPhone,
       customerName,
       order.orderNumber,
@@ -708,6 +737,9 @@ export class OrdersService {
       paymentLabel,
       order.items as any,
     );
+    if (!paymentReceiptSent) {
+      this.logWhatsAppFailure('payment receipt', order.orderNumber);
+    }
 
     const delayHours = Number(this.configService.get('REVIEW_REQUEST_DELAY_HOURS', 24));
     const delayMs = Math.max(0, Math.floor(delayHours * 60 * 60 * 1000));
@@ -728,12 +760,15 @@ export class OrdersService {
           order.orderNumber,
           googleReviewLink,
         );
-        this.whatsAppService.sendFeedbackRequest(
+        const feedbackRequestSent = await this.whatsAppService.sendFeedbackRequest(
           customerPhone,
           customerName,
           order.orderNumber,
           googleReviewLink,
         );
+        if (!feedbackRequestSent) {
+          this.logWhatsAppFailure('feedback request', order.orderNumber);
+        }
         await this.orderModel.findByIdAndUpdate(order._id, { feedbackRequested: true });
       } catch (e) { }
     }, delayMs);
@@ -782,7 +817,7 @@ export class OrdersService {
               alertMsg,
               'stock',
             );
-            this.whatsAppService.sendLowStockAlert('admin', product.name, product.stock);
+            await this.whatsAppService.sendLowStockAlert('admin', product.name, product.stock);
             // Send email alert
             try {
               await this.mailService.sendLowStockAlert(product.name, product.stock, unit);
@@ -825,6 +860,16 @@ export class OrdersService {
       throw new BadRequestException('SkipCash payment must be confirmed before creating the order');
     }
 
+    if (paymentMethod === 'skipcash' && dto.paymentId) {
+      const existingOrder = await this.orderModel.findOne({
+        paymentMethod: 'skipcash',
+        paymentId: dto.paymentId,
+      });
+      if (existingOrder) {
+        return { message: 'Order already exists for this SkipCash payment', order: this.formatOrder(existingOrder) };
+      }
+    }
+
     await this.ensurePaymentMethodEnabled(paymentMethod);
     const isOnlineMethod = ['online', 'visa', 'mastercard', 'apple_pay', 'bank_transfer', 'local_gateway', 'skipcash'].includes(paymentMethod);
     const paymentStatus = isOnlineMethod && dto.paymentId ? 'paid' : 'pending';
@@ -833,46 +878,61 @@ export class OrdersService {
     const customerEmail = dto.customer?.email?.trim() || user.email;
     const customerPhone = dto.customer?.phone?.trim() || user.phone || '';
 
-    const order = await this.orderModel.create({
-      orderNumber: this.generateOrderNumber(),
-      user: new Types.ObjectId(userId),
-      customer: {
-        name: customerName,
-        email: customerEmail,
-        phone: customerPhone,
-      },
-      items: dto.items,
-      subtotal,
-      shippingCost,
-      total,
-      shippingAddress: dto.shippingAddress,
-      paymentMethod,
-      paymentId: dto.paymentId || '',
-      paymentStatus,
-      salesChannel: dto.salesChannel || 'website',
-      discountCode: dto.discountCode || '',
-      notes: dto.notes || '',
-      loyaltyPointsEarned: loyaltyPoints,
-      paymentCompletedAt: this.isPaidStatus(paymentStatus) ? new Date() : undefined,
-      statusHistory: [{ status: 'pending', timestamp: new Date(), note: 'Order placed' }],
-    });
+    let order: OrderDocument;
+    try {
+      order = await this.orderModel.create({
+        orderNumber: this.generateOrderNumber(),
+        user: new Types.ObjectId(userId),
+        customer: {
+          name: customerName,
+          email: customerEmail,
+          phone: customerPhone,
+        },
+        items: dto.items,
+        subtotal,
+        shippingCost,
+        total,
+        shippingAddress: dto.shippingAddress,
+        paymentMethod,
+        paymentId: dto.paymentId || '',
+        paymentStatus,
+        salesChannel: dto.salesChannel || 'website',
+        discountCode: dto.discountCode || '',
+        notes: dto.notes || '',
+        loyaltyPointsEarned: loyaltyPoints,
+        paymentCompletedAt: this.isPaidStatus(paymentStatus) ? new Date() : undefined,
+        statusHistory: [{ status: 'pending', timestamp: new Date(), note: 'Order placed' }],
+      });
+    } catch (error: any) {
+      if (this.isDuplicatePaymentIdError(error) && paymentMethod === 'skipcash' && dto.paymentId) {
+        const existingOrder = await this.orderModel.findOne({ paymentMethod: 'skipcash', paymentId: dto.paymentId });
+        if (existingOrder) {
+          return { message: 'Order already exists for this SkipCash payment', order: this.formatOrder(existingOrder) };
+        }
+      }
+      throw error;
+    }
 
-    // Deduct stock
-    await this.deductStock(dto.items);
+    try {
+      await this.deductStock(dto.items);
+    } catch (error) {
+      await this.orderModel.findByIdAndDelete(order._id).catch(() => null);
+      throw error;
+    }
 
     // Clear user cart after successful order placement
     await this.cartModel.findOneAndUpdate(
       { user: new Types.ObjectId(userId) },
       { $set: { items: [] } },
-    );
+    ).catch(() => null);
 
     // Update user stats
     await this.userModel.findByIdAndUpdate(userId, {
       $inc: { totalOrders: 1, totalSpent: total },
-    });
+    }).catch(() => null);
 
     // Update customer CRM type
-    await this.updateCustomerType(userId);
+    await this.updateCustomerType(userId).catch(() => null);
 
     if (this.isPaidStatus(paymentStatus)) {
       await this.sendPaymentReceiptAndScheduleReview(order, customerEmail, customerPhone, customerName);
@@ -887,12 +947,15 @@ export class OrdersService {
         );
       } catch (e) { }
 
-      this.whatsAppService.sendOrderConfirmation(
+      const confirmationSent = await this.whatsAppService.sendOrderConfirmation(
         customerPhone,
         customerName,
         order.orderNumber,
         order.total,
       );
+      if (!confirmationSent) {
+        this.logWhatsAppFailure('order confirmation', order.orderNumber);
+      }
     }
 
     // Notify admins
@@ -900,10 +963,13 @@ export class OrdersService {
       'New Order',
       `Order ${order.orderNumber} placed by ${customerName} - ${total} QAR`,
       'order',
-    );
+    ).catch(() => null);
 
     // WhatsApp alert to admin
-    this.whatsAppService.sendNewOrderAlert('admin', order.orderNumber, total);
+    const adminAlertSent = await this.whatsAppService.sendNewOrderAlert('admin', order.orderNumber, total);
+    if (!adminAlertSent) {
+      this.logWhatsAppFailure('new order alert', order.orderNumber);
+    }
 
     return { message: 'Order created', order: this.formatOrder(order) };
   }
@@ -1065,8 +1131,8 @@ export class OrdersService {
       updatedBy,
     };
 
-    const updatedOrder = await this.orderModel.findByIdAndUpdate(
-      id,
+    const updatedOrder = await this.orderModel.findOneAndUpdate(
+      { _id: id, status: previousStatus },
       {
         $set: update,
         $push: { statusHistory: historyEntry },
@@ -1074,7 +1140,11 @@ export class OrdersService {
       { returnDocument: 'after' },
     );
 
-    if (!updatedOrder) throw new NotFoundException('Order not found');
+    if (!updatedOrder) {
+      const latestOrder = await this.orderModel.findById(id).select('status');
+      if (!latestOrder) throw new NotFoundException('Order not found');
+      throw new ConflictException(`Order status changed from ${previousStatus} to ${latestOrder.status}. Please refresh and try again.`);
+    }
 
     // Get user for notifications
     const user = await this.userModel.findById(order.user);
@@ -1097,18 +1167,27 @@ export class OrdersService {
     switch (dto.status) {
       case 'confirmed':
       case 'processing':
-        this.whatsAppService.sendOrderProcessing(customerPhone, customerName, order.orderNumber);
+        {
+          const statusSent = await this.whatsAppService.sendOrderProcessing(customerPhone, customerName, order.orderNumber);
+          if (!statusSent) this.logWhatsAppFailure('processing', order.orderNumber);
+        }
         break;
       case 'shipped':
-        this.whatsAppService.sendOrderShipped(
+        {
+          const shippedSent = await this.whatsAppService.sendOrderShipped(
           customerPhone,
           customerName,
           order.orderNumber,
           dto.trackingNumber || order.trackingNumber || '',
         );
+          if (!shippedSent) this.logWhatsAppFailure('shipped', order.orderNumber);
+        }
         break;
       case 'delivered':
-        this.whatsAppService.sendOrderDelivered(customerPhone, customerName, order.orderNumber);
+        {
+          const deliveredSent = await this.whatsAppService.sendOrderDelivered(customerPhone, customerName, order.orderNumber);
+          if (!deliveredSent) this.logWhatsAppFailure('delivered', order.orderNumber);
+        }
 
         // Award loyalty points
         if (user) {
@@ -1127,14 +1206,14 @@ export class OrdersService {
 
             if (updatedUser.loyaltyTier !== newTier) {
               await this.userModel.findByIdAndUpdate(user._id, { loyaltyTier: newTier });
-              this.whatsAppService.sendLoyaltyUpdate(
+              await this.whatsAppService.sendLoyaltyUpdate(
                 customerPhone,
                 customerName,
                 updatedUser.loyaltyPoints + points,
                 newTier,
               );
             } else {
-              this.whatsAppService.sendLoyaltyUpdate(
+              await this.whatsAppService.sendLoyaltyUpdate(
                 customerPhone,
                 customerName,
                 updatedUser.loyaltyPoints + points,
@@ -1149,7 +1228,10 @@ export class OrdersService {
         break;
 
       case 'cancelled':
-        this.whatsAppService.sendOrderCancelled(customerPhone, customerName, order.orderNumber);
+        {
+          const cancelledSent = await this.whatsAppService.sendOrderCancelled(customerPhone, customerName, order.orderNumber);
+          if (!cancelledSent) this.logWhatsAppFailure('cancelled', order.orderNumber);
+        }
         // Restore stock
         await this.restoreStock(order.items);
         break;
@@ -1248,12 +1330,15 @@ export class OrdersService {
     );
 
     // Notify delivery staff
-    this.whatsAppService.sendDeliveryAssignment(
+    const assignmentSent = await this.whatsAppService.sendDeliveryAssignment(
       staff.phone,
       staff.fullName,
       order.orderNumber,
       order.shippingAddress,
     );
+    if (!assignmentSent) {
+      this.logWhatsAppFailure('delivery assignment', order.orderNumber);
+    }
 
     await this.notificationsService.create({
       user: dto.deliveryStaffId,

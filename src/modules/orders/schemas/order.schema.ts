@@ -152,3 +152,13 @@ OrderSchema.index({ user: 1 });
 OrderSchema.index({ status: 1 });
 OrderSchema.index({ deliveryStaff: 1 });
 OrderSchema.index({ createdAt: -1 });
+OrderSchema.index(
+  { paymentMethod: 1, paymentId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      paymentMethod: 'skipcash',
+      paymentId: { $type: 'string', $ne: '' },
+    },
+  },
+);

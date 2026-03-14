@@ -20,11 +20,14 @@ export class ProductsService {
     const existing = await this.productModel.findOne({ slug });
     if (existing) throw new ConflictException('Product with this name already exists');
 
-    // Map isNewArrival to isNew if provided
+    // Persist the new-arrival flag under a non-reserved schema field.
     const data: any = { ...dto, slug };
     if (dto.isNewArrival !== undefined) {
-      data.isNew = dto.isNewArrival;
+      data.isNewArrival = dto.isNewArrival;
       delete data.isNewArrival;
+    } else if (dto.isNew !== undefined) {
+      data.isNewArrival = dto.isNew;
+      delete data.isNew;
     }
 
     const product = await this.productModel.create(data);
@@ -75,7 +78,17 @@ export class ProductsService {
     if (minPrice !== undefined) mongoFilter.price = { ...mongoFilter.price, $gte: minPrice };
     if (maxPrice !== undefined && maxPrice !== Infinity) mongoFilter.price = { ...mongoFilter.price, $lte: maxPrice };
 
-    if (filter === 'new') mongoFilter.isNew = true;
+    if (filter === 'new') {
+      mongoFilter.$and = [
+        ...(mongoFilter.$and || []),
+        {
+          $or: [
+            { isNewArrival: true },
+            { isNew: true },
+          ],
+        },
+      ];
+    }
     if (filter === 'bestseller') mongoFilter.isBestseller = true;
     if (filter === 'limited') mongoFilter.isLimitedEdition = true;
 
@@ -121,8 +134,11 @@ export class ProductsService {
       data.slug = this.generateSlug(dto.name);
     }
     if ((dto as any).isNewArrival !== undefined) {
-      data.isNew = (dto as any).isNewArrival;
+      data.isNewArrival = (dto as any).isNewArrival;
       delete data.isNewArrival;
+    } else if ((dto as any).isNew !== undefined) {
+      data.isNewArrival = (dto as any).isNew;
+      delete data.isNew;
     }
     const product = await this.productModel.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after' });
     if (!product) throw new NotFoundException('Product not found');
@@ -300,7 +316,8 @@ export class ProductsService {
       })),
       badge: p.badge,
       badgeAr: p.badgeAr,
-      isNew: p.isNew,
+      isNew: (p as any).isNewArrival ?? (p as any).isNew ?? false,
+      isNewArrival: (p as any).isNewArrival ?? (p as any).isNew ?? false,
       isBestseller: p.isBestseller,
       isLimitedEdition: p.isLimitedEdition,
       isFeatured: p.isFeatured,
@@ -338,7 +355,8 @@ export class ProductsService {
       productReviews: (p as any).productReviews || [],
       badge: p.badge,
       badgeAr: p.badgeAr,
-      isNew: p.isNew,
+      isNew: (p as any).isNewArrival ?? (p as any).isNew ?? false,
+      isNewArrival: (p as any).isNewArrival ?? (p as any).isNew ?? false,
       isBestseller: p.isBestseller,
       isLimitedEdition: p.isLimitedEdition,
       isFeatured: p.isFeatured,
