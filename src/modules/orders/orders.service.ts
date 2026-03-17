@@ -839,6 +839,24 @@ export class OrdersService {
     }
   }
 
+  private normalizeOrderItemsForCreate(items: Array<{
+    product?: string;
+    name: string;
+    nameAr?: string;
+    price: number;
+    quantity: number;
+    image?: string;
+  }>) {
+    return items.map((item) => ({
+      product: item.product ? new Types.ObjectId(item.product) : undefined,
+      name: item.name,
+      nameAr: item.nameAr || '',
+      price: item.price,
+      quantity: item.quantity,
+      image: item.image || '',
+    }));
+  }
+
   async create(userId: string, dto: CreateOrderDto) {
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
@@ -877,6 +895,7 @@ export class OrdersService {
     const customerName = dto.customer?.name?.trim() || user.fullName;
     const customerEmail = dto.customer?.email?.trim() || user.email;
     const customerPhone = dto.customer?.phone?.trim() || user.phone || '';
+    const normalizedItems = this.normalizeOrderItemsForCreate(dto.items);
 
     let order: OrderDocument;
     try {
@@ -888,7 +907,7 @@ export class OrdersService {
           email: customerEmail,
           phone: customerPhone,
         },
-        items: dto.items,
+        items: normalizedItems,
         subtotal,
         shippingCost,
         total,
@@ -987,6 +1006,7 @@ export class OrdersService {
     const paymentMethod = dto.paymentMethod || 'cash';
     const paymentStatus = dto.paymentStatus || (['cash', 'pos_machine', 'card_on_delivery'].includes(paymentMethod) ? 'paid' : 'pending');
     const orderStatus = this.isPaidStatus(paymentStatus) ? 'processing' : 'pending';
+    const normalizedItems = this.normalizeOrderItemsForCreate(dto.items);
 
     const order = await this.orderModel.create({
       orderNumber: this.generateOrderNumber(),
@@ -996,7 +1016,7 @@ export class OrdersService {
         email,
         phone: dto.customerPhone || '',
       },
-      items: dto.items,
+      items: normalizedItems,
       subtotal,
       shippingCost: 0,
       total,
