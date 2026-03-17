@@ -79,7 +79,7 @@ async function bootstrap() {
   });
 
   // Global API prefix
-  app.setGlobalPrefix('api');
+  // app.setGlobalPrefix('api');
 
   // Static uploads folder
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
