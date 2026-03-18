@@ -28,7 +28,8 @@ export class AuthService {
   }
 
   async signup(dto: SignupDto) {
-    const existing = await this.userModel.findOne({ email: dto.email.toLowerCase() });
+    const email = dto.email.trim().toLowerCase();
+    const existing = await this.userModel.findOne({ email });
     if (existing) {
       throw new ConflictException('Email already registered');
     }
@@ -39,7 +40,7 @@ export class AuthService {
 
     const user = await this.userModel.create({
       fullName: dto.fullName,
-      email: dto.email.toLowerCase(),
+      email,
       phone: dto.phone,
       password: hashedPassword,
       otp,
@@ -57,7 +58,7 @@ export class AuthService {
   }
 
   async verifyOtp(dto: VerifyOtpDto) {
-    const user = await this.userModel.findOne({ email: dto.email.toLowerCase() });
+    const user = await this.userModel.findOne({ email: dto.email.trim().toLowerCase() });
     if (!user) {
       throw new BadRequestException('User not found');
     }
@@ -89,7 +90,7 @@ export class AuthService {
   }
 
   async resendOtp(email: string) {
-    const user = await this.userModel.findOne({ email: email.toLowerCase() });
+    const user = await this.userModel.findOne({ email: email.trim().toLowerCase() });
     if (!user) {
       throw new BadRequestException('User not found');
     }
@@ -109,7 +110,7 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const user = await this.userModel.findOne({ email: dto.email.toLowerCase() }).select('+password');
+    const user = await this.userModel.findOne({ email: dto.email.trim().toLowerCase() }).select('+password');
     if (!user) {
       throw new UnauthorizedException('Invalid email or password');
     }
@@ -180,7 +181,7 @@ export class AuthService {
   }
 
   async forgotPassword(dto: ForgotPasswordDto) {
-    const user = await this.userModel.findOne({ email: dto.email.toLowerCase() });
+    const user = await this.userModel.findOne({ email: dto.email.trim().toLowerCase() });
     if (!user) {
       // Return success even if user not found to prevent email enumeration
       return { message: 'If an account exists with this email, a reset code has been sent.' };
@@ -197,7 +198,7 @@ export class AuthService {
   }
 
   async resetPassword(dto: ResetPasswordDto) {
-    const user = await this.userModel.findOne({ email: dto.email.toLowerCase() });
+    const user = await this.userModel.findOne({ email: dto.email.trim().toLowerCase() });
     if (!user) {
       throw new BadRequestException('Invalid reset request');
     }
