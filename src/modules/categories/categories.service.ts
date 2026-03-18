@@ -1,12 +1,16 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Category, CategoryDocument } from './schemas/category.schema';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto';
+import { Product, ProductDocument } from '../products/schemas/product.schema';
 
 @Injectable()
 export class CategoriesService {
-  constructor(@InjectModel(Category.name) private categoryModel: Model<CategoryDocument>) {}
+  constructor(
+    @InjectModel(Category.name) private categoryModel: Model<CategoryDocument>,
+    @InjectModel(Product.name) private productModel: Model<ProductDocument>,
+  ) {}
 
   private generateSlug(name: string): string {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -23,9 +27,54 @@ export class CategoriesService {
 
   async findAll(query?: { featured?: boolean }) {
     const filter: any = { isActive: true };
-    if (query?.featured) filter.featured = true;
+    if (typeof query?.featured === 'boolean') {
+      filter.featured = query.featured;
+    }
 
     const categories = await this.categoryModel.find(filter).sort({ name: 1 });
+
+    if (!categories.length) return [];
+
+    const categoriesById = new Map<string, CategoryDocument>();
+    const categoriesByName = new Map<string, CategoryDocument>();
+
+    for (const category of categories) {
+      const id = String(category._id);
+      categoriesById.set(id, category);
+      categoriesByName.set((category.name || '').trim().toLowerCase(), category);
+      categoriesByName.set((category.nameAr || '').trim().toLowerCase(), category);
+    }
+
+    const productCountsByCategoryId = new Map<string, number>();
+    const productImagesByCategoryId = new Map<string, string>();
+
+    const products = await this.productModel
+      .find({ status: { $ne: 'archived' } })
+      .select('_id category categoryName image')
+      .lean();
+
+    for (const product of products) {
+      let matchedCategory: CategoryDocument | undefined;
+
+      if (product.category) {
+        const categoryId = product.category instanceof Types.ObjectId ? product.category.toString() : String(product.category);
+        matchedCategory = categoriesById.get(categoryId);
+      }
+
+      if (!matchedCategory && product.categoryName) {
+        matchedCategory = categoriesByName.get(product.categoryName.trim().toLowerCase());
+      }
+
+      if (!matchedCategory) continue;
+
+      const key = String(matchedCategory._id);
+      productCountsByCategoryId.set(key, (productCountsByCategoryId.get(key) || 0) + 1);
+
+      if (!productImagesByCategoryId.has(key) && product.image) {
+        productImagesByCategoryId.set(key, product.image);
+      }
+    }
+
     return categories.map((c) => ({
       _id: c._id,
       id: c._id,
@@ -33,10 +82,10 @@ export class CategoriesService {
       nameAr: c.nameAr,
       description: c.description,
       descriptionAr: c.descriptionAr,
-      image: c.image,
+      image: c.image || productImagesByCategoryId.get(String(c._id)) || '',
       slug: c.slug,
       href: `/shop?category=${c.slug}`,
-      productCount: c.productCount,
+      productCount: productCountsByCategoryId.get(String(c._id)) || 0,
       featured: c.featured,
     }));
   }

@@ -9,8 +9,11 @@ export class CategoriesController {
   constructor(private categoriesService: CategoriesService) {}
 
   @Get()
-  findAll(@Query('featured') featured?: boolean) {
-    return this.categoriesService.findAll({ featured });
+  findAll(@Query('featured') featured?: string) {
+    const parsedFeatured =
+      typeof featured === 'string' ? featured.toLowerCase() === 'true' : undefined;
+
+    return this.categoriesService.findAll({ featured: parsedFeatured });
   }
 
   @Get(':slug')
