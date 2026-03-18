@@ -30,6 +30,7 @@ async function bootstrap() {
     'http://127.0.0.1:3000',
     'http://127.0.0.1:3001',
     'https://oud-xi.vercel.app',
+    'http://oudalzubarah.com'
   ];
 
   const frontendUrl = configService.get<string>('FRONTEND_URL');
