@@ -44,7 +44,12 @@ export class InventoryService {
   }
 
   private parseCellNumber(value: any): number {
-    const normalized = String(value ?? '').replace(/,/g, '').trim();
+    const normalized = String(value ?? '')
+      .trim()
+      .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+      .replace(/[\u06F0-\u06F9]/g, (d) => String(d.charCodeAt(0) - 0x06F0))
+      .replace(/[\u066B,]/g, '.')
+      .replace(/[\u066C\s]/g, '');
     if (!normalized) return NaN;
     const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : NaN;
@@ -268,7 +273,12 @@ export class InventoryService {
   // Columns: Item Code | English Name | Arabic Name | Description EN | Description AR | Category | SKU
   //          Unit | Quantity | Price per gram | Price per tola | Status | Low Stock Threshold | Image URL
   async importFromExcel(file: Buffer) {
-    const workbook = XLSX.read(file, { type: 'buffer' });
+    const workbook = XLSX.read(file, {
+      type: 'buffer',
+      codepage: 65001,
+      raw: false,
+      cellText: true,
+    });
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
 

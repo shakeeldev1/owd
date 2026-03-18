@@ -30,13 +30,32 @@ export class WhatsAppService {
     private configService: ConfigService,
     @InjectModel(Settings.name) private settingsModel: Model<SettingsDocument>,
   ) {
-    this.apiUrl = this.configService.get('WHATSAPP_API_URL', 'https://custom1.waghl.com/send-message');
+    const configuredApiUrl = this.configService.get('WHATSAPP_API_URL', 'https://custom1.waghl.com/send-message');
+    this.apiUrl = this.normalizeApiUrl(configuredApiUrl);
     this.apiKey = this.configService.get('WHATSAPP_API_KEY', '');
     this.sender = this.configService.get('WHATSAPP_SENDER', '');
     this.defaultNumber = this.configService.get('WHATSAPP_DEFAULT_NUMBER', '+97433689955');
     const envEnabled = this.configService.get<string>('WHATSAPP_ENABLED', 'true');
     this.enabled = envEnabled !== 'false' && !!(this.apiUrl && this.apiKey && this.sender);
     this.timeoutMs = Number(this.configService.get('WHATSAPP_TIMEOUT_MS', '12000'));
+  }
+
+  private normalizeApiUrl(url: string): string {
+    const trimmed = String(url || '').trim();
+    if (!trimmed) return '';
+
+    if (/\/send-message\/?$/i.test(trimmed)) {
+      return trimmed.replace(/\/+$/, '');
+    }
+
+    return `${trimmed.replace(/\/+$/, '')}/send-message`;
+  }
+
+  private extractDefaultCountryCode(fallbackPhone: string): string {
+    const digits = String(fallbackPhone || '').replace(/\D/g, '');
+    if (!digits) return '974';
+    if (digits.length <= 8) return '974';
+    return digits.slice(0, Math.max(1, digits.length - 8));
   }
 
   private async getRuntimeSettings(): Promise<{ whatsappEnabled: boolean; whatsappNumber: string }> {
@@ -63,10 +82,26 @@ export class WhatsAppService {
 
   private formatPhone(phone: string, fallbackPhone: string): string {
     const source = !phone || phone.toLowerCase() === 'admin' ? fallbackPhone : phone;
-    let cleaned = String(source).trim().replace(/[\s\-\(\)]/g, '');
-    if (!cleaned.startsWith('+') && !cleaned.startsWith('00')) cleaned = `+974${cleaned}`;
-    if (cleaned.startsWith('00')) cleaned = `+${cleaned.slice(2)}`;
-    return cleaned.replace(/\D/g, '');
+    const raw = String(source).trim();
+    if (!raw) return '';
+
+    const defaultCode = this.extractDefaultCountryCode(fallbackPhone);
+    if (raw.startsWith('00')) {
+      return raw.slice(2).replace(/\D/g, '');
+    }
+
+    if (raw.startsWith('+')) {
+      return raw.replace(/\D/g, '');
+    }
+
+    const digitsOnly = raw.replace(/\D/g, '');
+    if (!digitsOnly) return '';
+
+    if (digitsOnly.length <= 8) {
+      return `${defaultCode}${digitsOnly}`;
+    }
+
+    return digitsOnly;
   }
 
   private sanitizeMessage(message: string): string {
@@ -88,6 +123,7 @@ export class WhatsAppService {
       },
       body: JSON.stringify({
         api_key: this.apiKey,
+        apiKey: this.apiKey,
         sender: this.sender,
         number,
         message,
