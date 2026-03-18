@@ -82,7 +82,7 @@ export class CategoriesService {
       nameAr: c.nameAr,
       description: c.description,
       descriptionAr: c.descriptionAr,
-      image: c.image || productImagesByCategoryId.get(String(c._id)) || '',
+      image: productImagesByCategoryId.get(String(c._id)) || c.image || '',
       slug: c.slug,
       href: `/shop?category=${c.slug}`,
       productCount: productCountsByCategoryId.get(String(c._id)) || 0,
