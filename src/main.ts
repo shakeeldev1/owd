@@ -30,7 +30,10 @@ async function bootstrap() {
     'http://127.0.0.1:3000',
     'http://127.0.0.1:3001',
     'https://oud-xi.vercel.app',
-    'http://oudalzubarah.com'
+    'http://oudalzubarah.com',
+    'https://oudalzubarah.com',
+    'https://www.oudalzubarah.com',
+    'http://www.oudalzubarah.com',
   ];
 
   const frontendUrl = configService.get<string>('FRONTEND_URL');
@@ -58,6 +61,21 @@ async function bootstrap() {
       if (!origin) {
         callback(null, true);
         return;
+      }
+
+      // Allow primary production domain and subdomains on http/https.
+      try {
+        const parsed = new URL(origin);
+        const isAllowedProtocol = parsed.protocol === 'http:' || parsed.protocol === 'https:';
+        const isAllowedDomain =
+          parsed.hostname === 'oudalzubarah.com' || parsed.hostname.endsWith('.oudalzubarah.com');
+
+        if (isAllowedProtocol && isAllowedDomain) {
+          callback(null, true);
+          return;
+        }
+      } catch {
+        // Fall back to explicit allow-list check below.
       }
 
       if (allowedOrigins.includes(origin)) {
