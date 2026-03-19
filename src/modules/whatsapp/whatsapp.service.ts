@@ -20,7 +20,7 @@ export class WhatsAppService {
   private enabled: boolean;
   private readonly timeoutMs: number;
   private readonly maxMessageLength = 4096;
-  private settingsCache: { whatsappEnabled: boolean; whatsappNumber: string } | null = null;
+  private settingsCache: { whatsappEnabled: boolean; whatsappNumber: string; language?: string } | null = null;
   private settingsCacheAt = 0;
   private readonly settingsCacheTtlMs = 60000;
   private providerInactiveUntil = 0;
@@ -65,10 +65,11 @@ export class WhatsAppService {
     }
 
     try {
-      const settings = await this.settingsModel.findOne().select('whatsappEnabled whatsappNumber').lean();
+      const settings = await this.settingsModel.findOne().select('whatsappEnabled whatsappNumber language').lean();
       this.settingsCache = {
         whatsappEnabled: settings?.whatsappEnabled ?? true,
         whatsappNumber: settings?.whatsappNumber || this.defaultNumber,
+        language: settings?.language || 'en',
       };
       this.settingsCacheAt = now;
       return this.settingsCache;
@@ -76,6 +77,7 @@ export class WhatsAppService {
       return {
         whatsappEnabled: true,
         whatsappNumber: this.defaultNumber,
+        language: 'en',
       };
     }
   }
@@ -224,28 +226,57 @@ export class WhatsAppService {
 
   // Order lifecycle messages
   async sendOrderConfirmation(phone: string, name: string, orderNumber: string, total: number): Promise<boolean> {
-    return this.sendMessage(phone, 
-      `🛍️ *Order Confirmed!*\n\nHello ${name},\nYour order *#${orderNumber}* has been placed successfully.\nTotal: *${total} QAR*\n\nThank you for shopping with Al Fursan Oud! 🌿`
-    );
+    const runtime = await this.getRuntimeSettings();
+    const lang = (runtime as any).language || 'en';
+    if (lang === 'ar') {
+      const msg = `🧾 فاتورة طلبك – عود الزباره\n\nشكرًا لطلبك 🌿\nتم استلام طلبك بنجاح.\n\n📦 رقم الطلب: ${orderNumber}\n\n💰 الإجمالي: ${total} ريال\n\nسيتم إشعارك بجميع التحديثات.`;
+      return this.sendMessage(phone, msg);
+    }
+
+    const msg = `🧾 Your Order Receipt – Oud Al Zubarah\n\nThank you for your order 🌿\nYour order has been received successfully.\n\n📦 Order ID: ${orderNumber}\n\n💰 Total: ${total} QAR\n\nYou will receive updates about your order.`;
+    return this.sendMessage(phone, msg);
   }
 
   async sendOrderProcessing(phone: string, name: string, orderNumber: string): Promise<boolean> {
-    return this.sendMessage(phone,
-      `📦 *Order Being Prepared*\n\nHello ${name},\nYour order *#${orderNumber}* is now being prepared.\n\nWe'll notify you when it's ready for delivery! 🌿`
-    );
+    const runtime = await this.getRuntimeSettings();
+    const lang = (runtime as any).language || 'en';
+    if (lang === 'ar') {
+      const msg = `طلبك الآن قيد التجهيز ✨\nنعمل على تحضيره بأعلى جودة.\n\nسيتم إشعارك عند خروجه للتوصيل.`;
+      return this.sendMessage(phone, msg);
+    }
+
+    const msg = `Your order is now being prepared ✨\nWe are preparing it with the highest quality.\n\nYou will be notified when it is out for delivery.`;
+    return this.sendMessage(phone, msg);
   }
 
-  async sendOrderShipped(phone: string, name: string, orderNumber: string, trackingNumber?: string): Promise<boolean> {
-    let msg = `🚚 *Out for Delivery!*\n\nHello ${name},\nYour order *#${orderNumber}* is on its way!`;
-    if (trackingNumber) msg += `\nTracking: *${trackingNumber}*`;
-    msg += `\n\nAl Fursan Oud 🌿`;
+  async sendOrderShipped(phone: string, name: string, orderNumber: string, trackingNumber?: string, driverPhone?: string, location?: string): Promise<boolean> {
+    const runtime = await this.getRuntimeSettings();
+    const lang = (runtime as any).language || 'en';
+    if (lang === 'ar') {
+      let msg = `🚚 طلبك في الطريق إليك الآن\n\n`;
+      if (driverPhone) msg += `📞 رقم المندوب: ${driverPhone}\n`;
+      if (location) msg += `📍 الموقع: ${location}\n`;
+      msg += `\nشكرًا لاختيارك عود الزباره 🌿`;
+      return this.sendMessage(phone, msg);
+    }
+
+    let msg = `🚚 Your order is on the way\n\n`;
+    if (driverPhone) msg += `📞 Driver: ${driverPhone}\n`;
+    if (location) msg += `📍 Location: ${location}\n`;
+    msg += `\nThank you for choosing Oud Al Zubarah 🌿`;
     return this.sendMessage(phone, msg);
   }
 
   async sendOrderDelivered(phone: string, name: string, orderNumber: string): Promise<boolean> {
-    return this.sendMessage(phone,
-      `✅ *Order Delivered!*\n\nHello ${name},\nYour order *#${orderNumber}* has been delivered.\n\nWe hope you enjoy your purchase! Please rate your experience.\n\nAl Fursan Oud 🌿`
-    );
+    const runtime = await this.getRuntimeSettings();
+    const lang = (runtime as any).language || 'en';
+    if (lang === 'ar') {
+      const msg = `تم تسليم طلبك بنجاح 🌿\n\nنتمنى أن تنال منتجات عود الزباره إعجابك 🤍`;
+      return this.sendMessage(phone, msg);
+    }
+
+    const msg = `Your order has been delivered successfully 🌿\n\nWe hope you love your products from Oud Al Zubarah 🤍`;
+    return this.sendMessage(phone, msg);
   }
 
   async sendOrderCancelled(phone: string, name: string, orderNumber: string): Promise<boolean> {
@@ -294,15 +325,49 @@ export class WhatsAppService {
   }
 
   async sendLowStockAlert(phone: string, productName: string, currentStock: number): Promise<boolean> {
-    return this.sendMessage(phone,
-      `⚠️ *Low Stock Alert*\n\n*${productName}* has only *${currentStock}* items left.\n\nPlease restock soon.`
-    );
+    const runtime = await this.getRuntimeSettings();
+    const lang = (runtime as any).language || 'en';
+
+    // Out of stock
+    if (currentStock <= 0) {
+      if (lang === 'ar') {
+        const msg = `🚫 نفاد المخزون\n\nالمنتج: ${productName}\n\nالكمية الحالية: 0\n\nيرجى إعادة التوريد فورًا.`;
+        return this.sendMessage(phone, msg);
+      }
+
+      const msg = `🚫 Out of Stock\n\nProduct: ${productName}\n\nCurrent Quantity: 0\n\nPlease restock immediately.`;
+      return this.sendMessage(phone, msg);
+    }
+
+    // Low stock (threshold example: <=10)
+    if (currentStock <= 10) {
+      if (lang === 'ar') {
+        const msg = `⚠️ تنبيه مخزون منخفض\n\nالمنتج: ${productName}\nالكمية المتبقية: ${currentStock}\n\nيرجى إعادة التوريد قريبًا.`;
+        return this.sendMessage(phone, msg);
+      }
+
+      const msg = `⚠️ Low Stock Alert\n\nProduct: ${productName}\nRemaining: ${currentStock}\n\nPlease restock soon.`;
+      return this.sendMessage(phone, msg);
+    }
+
+    // Fallback: still send a gentle low-stock notice in default language
+    if (lang === 'ar') {
+      const msg = `⚠️ تنبيه مخزون منخفض\n\nالمنتج: ${productName}\nالكمية المتبقية: ${currentStock}`;
+      return this.sendMessage(phone, msg);
+    }
+    return this.sendMessage(phone, `⚠️ Low Stock Alert\n\nProduct: ${productName}\nRemaining: ${currentStock}`);
   }
 
-  async sendFeedbackRequest(phone: string, name: string, orderNumber: string, googleReviewLink: string): Promise<boolean> {
-    return this.sendMessage(phone,
-      `⭐ *How was your experience?*\n\nHello ${name},\nWe'd love your feedback on order *#${orderNumber}*.\n\nLeave a review: ${googleReviewLink}\n\nThank you! 🌿`
-    );
+  async sendFeedbackRequest(phone: string, name: string, orderNumber: string, googleReviewLink: string, lang?: string): Promise<boolean> {
+    const runtime = await this.getRuntimeSettings();
+    const L = lang || (runtime as any).language || 'en';
+    if (L === 'ar') {
+      const msg = `كيف كانت تجربتك مع عود الزباره؟ 🌿\n\nرأيك يهمنا كثيرًا\n\n⭐⭐⭐⭐⭐\n\nشاركنا تقييمك من هنا:\n${googleReviewLink}\n\n🎁 ستحصل على عرض خاص بعد التقييم`;
+      return this.sendMessage(phone, msg);
+    }
+
+    const msg = `How was your experience with Oud Al Zubarah? 🌿\n\nYour feedback means a lot to us\n\n⭐⭐⭐⭐⭐\n\nLeave your review here:\n${googleReviewLink}\n\n🎁 You’ll receive a special offer after your review`;
+    return this.sendMessage(phone, msg);
   }
 
   async sendPaymentReceipt(
@@ -312,16 +377,22 @@ export class WhatsAppService {
     total: number,
     paymentMethod: string,
     items: Array<{ name?: string; quantity?: number }>,
+    lang?: string,
   ): Promise<boolean> {
+    const runtime = await this.getRuntimeSettings();
+    const L = lang || (runtime as any).language || 'en';
     const lines = (items || [])
-      .slice(0, 8)
+      .slice(0, 20)
       .map((item) => `• ${item?.name || 'Item'} x${item?.quantity || 0}`)
       .join('\n');
 
-    return this.sendMessage(
-      phone,
-      `🧾 *Payment Receipt*\n\nHello ${name},\nPayment has been completed for order *#${orderNumber}*.\n\n${lines}\n\n*Total:* ${total} QAR\n*Payment Method:* ${paymentMethod}\n\nThank you for choosing Al Fursan Oud 🌿`,
-    );
+    if (L === 'ar') {
+      const msg = `🧾 فاتورة طلبك – عود الزباره\n\nشكرًا لطلبك 🌿\nتم استلام طلبك بنجاح.\n\n📦 رقم الطلب: ${orderNumber}\n🛍️ المنتجات:\n${lines}\n\n💰 الإجمالي: ${total} ريال\n💳 طريقة الدفع: ${paymentMethod}\n\nسيتم إشعارك بجميع التحديثات.`;
+      return this.sendMessage(phone, msg);
+    }
+
+    const msg = `🧾 Your Order Receipt – Oud Al Zubarah\n\nThank you for your order 🌿\nYour order has been received successfully.\n\n📦 Order ID: ${orderNumber}\n🛍️ Items:\n${lines}\n\n💰 Total: ${total} QAR\n💳 Payment Method: ${paymentMethod}\n\nYou will receive updates about your order.`;
+    return this.sendMessage(phone, msg);
   }
 
   async sendPromotion(phone: string, name: string, message: string): Promise<boolean> {
