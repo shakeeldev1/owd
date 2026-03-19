@@ -134,6 +134,7 @@ export class InventoryService {
         'Low Stock Alert',
         alertMsg,
         'stock',
+        { productId: product._id, stock },
       );
       this.whatsAppService.sendLowStockAlert('admin', product.name, stock);
       // Send email alert
@@ -169,6 +170,7 @@ export class InventoryService {
         'Low Stock Alert - Bulk Update',
         `Low stock items: ${lowStockAlerts.join(', ')}`,
         'stock',
+        { items: lowStockAlerts },
       );
     }
 
@@ -437,6 +439,7 @@ export class InventoryService {
         'Low Stock Alert - Excel Import',
         alertMsg,
         'stock',
+        { items: lowStockAlerts },
       );
       // Send email alert for imported low stock items
       try {
@@ -535,6 +538,7 @@ export class InventoryService {
         'Low Stock Report',
         `${lowStockProducts.length} products below threshold: ${names}`,
         'stock',
+        { count: lowStockProducts.length, items: lowStockProducts.map((p) => ({ id: p._id, name: p.name, stock: p.stock })) },
       );
 
       for (const product of lowStockProducts) {

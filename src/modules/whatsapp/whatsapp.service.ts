@@ -58,7 +58,7 @@ export class WhatsAppService {
     return digits.slice(0, Math.max(1, digits.length - 8));
   }
 
-  private async getRuntimeSettings(): Promise<{ whatsappEnabled: boolean; whatsappNumber: string }> {
+  private async getRuntimeSettings(): Promise<{ whatsappEnabled: boolean; whatsappNumber: string; language: string }> {
     const now = Date.now();
     if (this.settingsCache && now - this.settingsCacheAt < this.settingsCacheTtlMs) {
       return this.settingsCache;
@@ -405,5 +405,19 @@ export class WhatsAppService {
     return this.sendMessage(phone,
       `🏆 *Loyalty Update*\n\nHello ${name},\nYou now have *${points} points*!\nTier: *${tier}*\n\nKeep shopping to earn more rewards! 🌿`
     );
+  }
+
+  async sendInventorySummary(phone: string, items: Array<{ name: string; stock: number }>, lang?: string): Promise<boolean> {
+    const runtime = await this.getRuntimeSettings();
+    const L = lang || runtime.language || 'en';
+    const lines = (items || []).slice(0, 50).map((it) => `• ${it.name}: ${it.stock}`).join('\n') || 'No low-stock items';
+
+    if (L === 'ar') {
+      const msg = `تقرير المخزون\n\nالعناصر ذات المخزون المنخفض:\n${lines}\n\nالرجاء إعادة التوريد عند الحاجة.`;
+      return this.sendMessage(phone, msg);
+    }
+
+    const msg = `Inventory Summary\n\nLow-stock items:\n${lines}\n\nPlease restock as needed.`;
+    return this.sendMessage(phone, msg);
   }
 }

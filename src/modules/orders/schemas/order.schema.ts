@@ -106,6 +106,9 @@ export class Order {
   @Prop({ type: Date })
   reviewRequestScheduledAt!: Date;
 
+  @Prop({ type: Date })
+  reviewReminderScheduledAt!: Date;
+
   @Prop({ default: '' })
   shippingAddress!: string;
 

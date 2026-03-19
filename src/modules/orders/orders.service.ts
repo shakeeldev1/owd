@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
 import { Model, Types } from 'mongoose';
@@ -22,7 +23,7 @@ import { MailService } from '../auth/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
-export class OrdersService {
+export class OrdersService implements OnModuleInit {
   constructor(
     @InjectModel(Order.name) private orderModel: Model<OrderDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
@@ -34,6 +35,113 @@ export class OrdersService {
     private mailService: MailService,
     private notificationsService: NotificationsService,
   ) {}
+
+  async onModuleInit() {
+    // Start periodic scanner to process scheduled review requests/reminders every minute
+    const scanIntervalMs = Math.max(30 * 1000, Number(this.configService.get('REVIEW_SCHEDULER_INTERVAL_MS', 60 * 1000)));
+    setInterval(() => this.processScheduledReviews().catch(() => null), scanIntervalMs);
+    // Schedule daily inventory summary (default every 24h)
+    const inventoryIntervalMs = Math.max(
+      60 * 60 * 1000,
+      Number(this.configService.get('INVENTORY_SUMMARY_INTERVAL_MS', 24 * 60 * 60 * 1000)),
+    );
+    setInterval(() => this.processInventorySummary().catch(() => null), inventoryIntervalMs);
+  }
+
+  private async processInventorySummary() {
+    try {
+      // Find products at or below their lowStockThreshold (or default 10)
+      const products = await this.productModel.find({}).select('name stock lowStockThreshold').lean();
+      const lowItems: Array<{ name: string; stock: number }> = [];
+      for (const p of products) {
+        const threshold = (p as any).lowStockThreshold ?? 10;
+        if ((p as any).stock <= threshold) {
+          lowItems.push({ name: p.name, stock: p.stock });
+        }
+      }
+
+      if (lowItems.length === 0) return;
+
+      // Compose message and notify admins
+      const lines = lowItems.slice(0, 50).map((i) => `${i.name} — ${i.stock}`).join('\n');
+      const summaryMsg = `Inventory summary: ${lowItems.length} low/out-of-stock items\n\n${lines}`;
+
+      await this.notificationsService.notifyAdmins('Inventory Summary', summaryMsg, 'inventory', { items: lowItems });
+
+      // Send WhatsApp summary to admin number
+      await this.whatsAppService.sendInventorySummary('admin', lowItems);
+    } catch (e) {
+      console.error('Inventory summary job failed', e);
+    }
+  }
+
+  private async processScheduledReviews() {
+    const now = new Date();
+
+    // Initial review requests (e.g., 6h after delivered)
+    const initialDue = await this.orderModel.find({
+      feedbackRating: { $exists: false },
+      reviewRequestScheduledAt: { $lte: now },
+    }).limit(50).lean();
+
+    for (const o of initialDue) {
+      try {
+        const order = await this.orderModel.findById(o._id);
+        if (!order) continue;
+        if (order.feedbackRating) continue; // already reviewed
+
+        const googleReviewLink = this.configService.get('GOOGLE_REVIEW_LINK') || 'https://g.page/r/alfursan-oud/review';
+        await this.mailService.sendFeedbackRequest(
+          order.customer.email,
+          order.customer.name,
+          order.orderNumber,
+          googleReviewLink,
+        );
+        await this.whatsAppService.sendFeedbackRequest(
+          order.customer.phone || '',
+          order.customer.name || '',
+          order.orderNumber,
+          googleReviewLink,
+        );
+
+        // mark that initial request was sent
+        order.reviewRequestScheduledAt = undefined as any;
+        order.feedbackRequested = true;
+        await order.save();
+      } catch (e) { /* ignore individual failures */ }
+    }
+
+    // Reminders (e.g., 24h after delivered) send only if still no feedback
+    const reminderDue = await this.orderModel.find({
+      feedbackRating: { $exists: false },
+      reviewReminderScheduledAt: { $lte: now },
+    }).limit(50).lean();
+
+    for (const o of reminderDue) {
+      try {
+        const order = await this.orderModel.findById(o._id);
+        if (!order) continue;
+        if (order.feedbackRating) continue; // already reviewed
+
+        const googleReviewLink = this.configService.get('GOOGLE_REVIEW_LINK') || 'https://g.page/r/alfursan-oud/review';
+        await this.mailService.sendFeedbackRequest(
+          order.customer.email,
+          order.customer.name,
+          order.orderNumber,
+          googleReviewLink,
+        );
+        await this.whatsAppService.sendFeedbackRequest(
+          order.customer.phone || '',
+          order.customer.name || '',
+          order.orderNumber,
+          googleReviewLink,
+        );
+
+        order.reviewReminderScheduledAt = undefined as any;
+        await order.save();
+      } catch (e) { /* ignore */ }
+    }
+  }
 
   private generateOrderNumber(): string {
     const date = new Date();
@@ -745,37 +853,15 @@ export class OrdersService {
       this.logWhatsAppFailure('payment receipt', order.orderNumber);
     }
 
-    const delayHours = Number(this.configService.get('REVIEW_REQUEST_DELAY_HOURS', 24));
-    const delayMs = Math.max(0, Math.floor(delayHours * 60 * 60 * 1000));
+    const initialHours = Number(this.configService.get('REVIEW_REQUEST_INITIAL_HOURS', 6));
+    const reminderHours = Number(this.configService.get('REVIEW_REQUEST_REMINDER_HOURS', 24));
+    const initialMs = Math.max(0, Math.floor(initialHours * 60 * 60 * 1000));
+    const reminderMs = Math.max(0, Math.floor(reminderHours * 60 * 60 * 1000));
 
     await this.orderModel.findByIdAndUpdate(order._id, {
-      reviewRequestScheduledAt: new Date(Date.now() + delayMs),
+      reviewRequestScheduledAt: new Date(Date.now() + initialMs),
+      reviewReminderScheduledAt: new Date(Date.now() + reminderMs),
     });
-
-    setTimeout(async () => {
-      try {
-        const currentOrder = await this.orderModel.findById(order._id);
-        if (!currentOrder || currentOrder.feedbackRequested) return;
-
-        const googleReviewLink = this.configService.get('GOOGLE_REVIEW_LINK') || 'https://g.page/r/alfursan-oud/review';
-        await this.mailService.sendFeedbackRequest(
-          customerEmail,
-          customerName,
-          order.orderNumber,
-          googleReviewLink,
-        );
-        const feedbackRequestSent = await this.whatsAppService.sendFeedbackRequest(
-          customerPhone,
-          customerName,
-          order.orderNumber,
-          googleReviewLink,
-        );
-        if (!feedbackRequestSent) {
-          this.logWhatsAppFailure('feedback request', order.orderNumber);
-        }
-        await this.orderModel.findByIdAndUpdate(order._id, { feedbackRequested: true });
-      } catch (e) { }
-    }, delayMs);
   }
 
   // ─── Determine customer type based on order history ───
@@ -981,11 +1067,12 @@ export class OrdersService {
       }
     }
 
-    // Notify admins
+    // Notify admins (include salesChannel metadata)
     await this.notificationsService.notifyAdmins(
       'New Order',
       `Order ${order.orderNumber} placed by ${customerName} - ${total} QAR`,
       'order',
+      { orderNumber: order.orderNumber, salesChannel: order.salesChannel || 'website', total },
     ).catch(() => null);
 
     // WhatsApp alert to admin
@@ -1039,6 +1126,25 @@ export class OrdersService {
     // Deduct stock
     await this.deductStock(dto.items);
 
+    // If order was created from store (in‑person), mark as delivered immediately and schedule review
+    if ((order.salesChannel || 'store') === 'store') {
+      try {
+        const now = new Date();
+        order.status = 'delivered';
+        order.deliveredAt = now as any;
+        await order.save();
+
+        const initialHours = Number(this.configService.get('REVIEW_REQUEST_INITIAL_HOURS', 6));
+        const reminderHours = Number(this.configService.get('REVIEW_REQUEST_REMINDER_HOURS', 24));
+        const initialMs = Math.max(0, Math.floor(initialHours * 60 * 60 * 1000));
+        const reminderMs = Math.max(0, Math.floor(reminderHours * 60 * 60 * 1000));
+        await this.orderModel.findByIdAndUpdate(order._id, {
+          reviewRequestScheduledAt: new Date(Date.now() + initialMs),
+          reviewReminderScheduledAt: new Date(Date.now() + reminderMs),
+        });
+      } catch (e) { /* don't block order creation */ }
+    }
+
     if (this.isPaidStatus(paymentStatus)) {
       await this.sendPaymentReceiptAndScheduleReview(
         order,
@@ -1062,6 +1168,7 @@ export class OrdersService {
       'New Order',
       `Order ${order.orderNumber} created from admin panel for ${dto.customerName} - ${total} QAR`,
       'order',
+      { orderNumber: order.orderNumber, salesChannel: order.salesChannel || 'store', total },
     ).catch(() => null);
 
     const adminAlertSent = await this.whatsAppService.sendNewOrderAlert('admin', order.orderNumber, total);
@@ -1232,6 +1339,24 @@ export class OrdersService {
         {
           const deliveredSent = await this.whatsAppService.sendOrderDelivered(customerPhone, customerName, order.orderNumber);
           if (!deliveredSent) this.logWhatsAppFailure('delivered', order.orderNumber);
+
+          // Ensure deliveredAt is set and schedule review/reminder
+          try {
+            const now = new Date();
+            await this.orderModel.findByIdAndUpdate(order._id, {
+              deliveredAt: order.deliveredAt || now,
+            });
+
+            // Schedule review and reminder (6h and 24h by default)
+            const initialHours = Number(this.configService.get('REVIEW_REQUEST_INITIAL_HOURS', 6));
+            const reminderHours = Number(this.configService.get('REVIEW_REQUEST_REMINDER_HOURS', 24));
+            const initialMs = Math.max(0, Math.floor(initialHours * 60 * 60 * 1000));
+            const reminderMs = Math.max(0, Math.floor(reminderHours * 60 * 60 * 1000));
+            await this.orderModel.findByIdAndUpdate(order._id, {
+              reviewRequestScheduledAt: new Date(Date.now() + initialMs),
+              reviewReminderScheduledAt: new Date(Date.now() + reminderMs),
+            });
+          } catch (e) { /* scheduling shouldn't block flow */ }
         }
 
         // Award loyalty points
