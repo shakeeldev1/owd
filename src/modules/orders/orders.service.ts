@@ -64,6 +64,10 @@ export class OrdersService {
     console.warn(`⚠️ WhatsApp ${action} notification failed for order ${orderNumber}`);
   }
 
+  private safeCustomerName(name?: string): string {
+    return (name || '').trim() || 'Valued Customer';
+  }
+
   private async ensurePaymentMethodEnabled(paymentMethod: string) {
     const settings = await this.settingsModel.findOne().lean();
     if (!settings) return;
@@ -1042,6 +1046,27 @@ export class OrdersService {
         dto.customerPhone || '',
         dto.customerName,
       );
+    } else {
+      const confirmationSent = await this.whatsAppService.sendOrderConfirmation(
+        dto.customerPhone || '',
+        this.safeCustomerName(dto.customerName),
+        order.orderNumber,
+        order.total,
+      );
+      if (!confirmationSent) {
+        this.logWhatsAppFailure('order confirmation', order.orderNumber);
+      }
+    }
+
+    await this.notificationsService.notifyAdmins(
+      'New Order',
+      `Order ${order.orderNumber} created from admin panel for ${dto.customerName} - ${total} QAR`,
+      'order',
+    ).catch(() => null);
+
+    const adminAlertSent = await this.whatsAppService.sendNewOrderAlert('admin', order.orderNumber, total);
+    if (!adminAlertSent) {
+      this.logWhatsAppFailure('new order alert', order.orderNumber);
     }
 
     return { message: 'Order created', order: this.formatOrder(order) };
@@ -1170,7 +1195,7 @@ export class OrdersService {
     const user = await this.userModel.findById(order.user);
     const customerPhone = order.customer?.phone || user?.phone || '';
     const customerEmail = order.customer?.email || user?.email || '';
-    const customerName = order.customer?.name || user?.fullName || '';
+    const customerName = this.safeCustomerName(order.customer?.name || user?.fullName || '');
 
     // ─── Automated notifications based on status ───
     try {
@@ -1255,6 +1280,17 @@ export class OrdersService {
         // Restore stock
         await this.restoreStock(order.items);
         break;
+    }
+
+    const adminStatusAlertSent = await this.whatsAppService.sendAdminOrderStatusUpdate(
+      'admin',
+      order.orderNumber,
+      customerName,
+      customerPhone,
+      dto.status,
+    );
+    if (!adminStatusAlertSent) {
+      this.logWhatsAppFailure('admin status update alert', order.orderNumber);
     }
 
     // Create user notification
@@ -1358,6 +1394,20 @@ export class OrdersService {
     );
     if (!assignmentSent) {
       this.logWhatsAppFailure('delivery assignment', order.orderNumber);
+    }
+
+    const customerPhone = order.customer?.phone || '';
+    if (customerPhone) {
+      const customerAssignmentSent = await this.whatsAppService.sendCustomerCollectionNotice(
+        customerPhone,
+        this.safeCustomerName(order.customer?.name || ''),
+        order.orderNumber,
+        staff.fullName,
+        staff.phone || 'Support Team',
+      );
+      if (!customerAssignmentSent) {
+        this.logWhatsAppFailure('customer collection notice', order.orderNumber);
+      }
     }
 
     await this.notificationsService.create({

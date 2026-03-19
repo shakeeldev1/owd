@@ -249,9 +249,35 @@ export class WhatsAppService {
     );
   }
 
+  async sendAdminOrderStatusUpdate(
+    phone: string,
+    orderNumber: string,
+    customerName: string,
+    customerPhone: string,
+    status: string,
+  ): Promise<boolean> {
+    return this.sendMessage(
+      phone,
+      `📢 *Order Status Updated*\n\nOrder: *#${orderNumber}*\nCustomer: ${customerName || 'N/A'}\nPhone: ${customerPhone || 'N/A'}\nNew Status: *${status}*\nUpdated: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Qatar' })}`,
+    );
+  }
+
   async sendDeliveryAssignment(phone: string, staffName: string, orderNumber: string, address: string): Promise<boolean> {
     return this.sendMessage(phone,
       `📋 *New Delivery Assignment*\n\nHello ${staffName},\nOrder *#${orderNumber}* assigned to you.\nAddress: ${address}\n\nPlease update status when completed.`
+    );
+  }
+
+  async sendCustomerCollectionNotice(
+    phone: string,
+    customerName: string,
+    orderNumber: string,
+    staffName: string,
+    staffPhone: string,
+  ): Promise<boolean> {
+    return this.sendMessage(
+      phone,
+      `🚚 *We Are On The Way*\n\nHello ${customerName},\nYour order *#${orderNumber}* has been assigned for delivery.\nDelivery Staff: ${staffName}\nContact: ${staffPhone || 'Please contact support'}\n\nThank you for choosing Al Fursan Oud 🌿`,
     );
   }
 
