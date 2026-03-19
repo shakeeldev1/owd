@@ -20,7 +20,7 @@ export class WhatsAppService {
   private enabled: boolean;
   private readonly timeoutMs: number;
   private readonly maxMessageLength = 4096;
-  private settingsCache: { whatsappEnabled: boolean; whatsappNumber: string; language?: string } | null = null;
+  private settingsCache: { whatsappEnabled: boolean; whatsappNumber: string; language: string } | null = null;
   private settingsCacheAt = 0;
   private readonly settingsCacheTtlMs = 60000;
   private providerInactiveUntil = 0;
