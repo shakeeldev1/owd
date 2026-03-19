@@ -1467,6 +1467,100 @@ export class OrdersService {
     return { message: 'Feedback submitted' };
   }
 
+  async getTracking(orderId: string, requester: any) {
+    const order = await this.orderModel
+      .findById(orderId)
+      .populate('deliveryStaff', 'fullName phone email')
+      .populate('user', '_id');
+
+    if (!order) throw new NotFoundException('Order not found');
+
+    const requesterRole = requester?.role || 'user';
+    const requesterId = String(requester?._id || '');
+    const orderUserId = String((order.user as any)?._id || order.user || '');
+
+    if (requesterRole === 'user' && requesterId !== orderUserId) {
+      throw new NotFoundException('Order not found');
+    }
+
+    return {
+      orderNumber: order.orderNumber,
+      status: order.status,
+      trackingNumber: order.trackingNumber || '',
+      shippingAddress: order.shippingAddress,
+      assignedAt: order.assignedAt,
+      deliveredAt: order.deliveredAt,
+      deliveryStaff: (order as any).deliveryStaff
+        ? {
+            id: (order as any).deliveryStaff._id,
+            name: (order as any).deliveryStaff.fullName,
+            phone: (order as any).deliveryStaff.phone,
+          }
+        : null,
+      history: (order.statusHistory || []).map((entry: any) => ({
+        status: entry.status,
+        timestamp: entry.timestamp,
+        note: entry.note,
+        updatedBy: entry.updatedBy,
+      })),
+    };
+  }
+
+  async sendTrackingReminder(orderId: string, requestedBy = 'system') {
+    const order = await this.orderModel.findById(orderId);
+    if (!order) throw new NotFoundException('Order not found');
+
+    const user = await this.userModel.findById(order.user);
+    const customerPhone = order.customer?.phone || user?.phone || '';
+    const customerName = this.safeCustomerName(order.customer?.name || user?.fullName || '');
+
+    if (!customerPhone) {
+      throw new BadRequestException('Customer phone number is missing for reminder');
+    }
+
+    let sent = false;
+    if (order.status === 'shipped') {
+      sent = await this.whatsAppService.sendOrderShipped(
+        customerPhone,
+        customerName,
+        order.orderNumber,
+        order.trackingNumber || '',
+      );
+    } else if (order.status === 'delivered') {
+      const reviewLink = this.configService.get<string>('GOOGLE_REVIEW_LINK') || '';
+      sent = await this.whatsAppService.sendFeedbackRequest(
+        customerPhone,
+        customerName,
+        order.orderNumber,
+        reviewLink,
+      );
+    } else {
+      sent = await this.whatsAppService.sendOrderProcessing(
+        customerPhone,
+        customerName,
+        order.orderNumber,
+      );
+    }
+
+    await this.orderModel.findByIdAndUpdate(orderId, {
+      $push: {
+        statusHistory: {
+          status: 'reminder_sent',
+          timestamp: new Date(),
+          note: `Reminder sent by ${requestedBy}`,
+          updatedBy: requestedBy,
+        },
+      },
+    });
+
+    if (!sent) {
+      this.logWhatsAppFailure('tracking reminder', order.orderNumber);
+      return { message: 'Reminder attempted but WhatsApp provider did not confirm delivery', sent: false };
+    }
+
+    return { message: 'Reminder sent successfully', sent: true };
+  }
+
   async getStats() {
     const total = await this.orderModel.countDocuments();
     const pending = await this.orderModel.countDocuments({ status: 'pending' });

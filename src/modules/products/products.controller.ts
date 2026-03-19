@@ -28,7 +28,7 @@ export class ProductsController {
 
   @Get('stats')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('admin')
+  @Roles('admin', 'staff')
   getStats() {
     return this.productsService.getStats();
   }
@@ -55,7 +55,7 @@ export class ProductsController {
 
   @Get('admin')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('admin')
+  @Roles('admin', 'staff')
   adminFindAll(
     @Query('search') search?: string,
     @Query('status') status?: string,
@@ -78,14 +78,14 @@ export class ProductsController {
 
   @Post()
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('admin')
+  @Roles('admin', 'staff')
   create(@Body() dto: CreateProductDto) {
     return this.productsService.create(dto);
   }
 
   @Patch(':id')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('admin')
+  @Roles('admin', 'staff')
   update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
     return this.productsService.update(id, dto);
   }

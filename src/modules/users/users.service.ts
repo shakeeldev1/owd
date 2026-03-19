@@ -2,11 +2,15 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, UserDocument } from './schemas/user.schema';
+import { Recipient, RecipientDocument } from './schemas/recipient.schema';
 import { UpdateProfileDto, UpdateNotificationsDto } from '../auth/dto';
 
 @Injectable()
 export class UsersService {
-  constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
+  constructor(
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(Recipient.name) private recipientModel: Model<RecipientDocument>,
+  ) {}
 
   async getProfile(userId: string) {
     const user = await this.userModel.findById(userId);
@@ -74,8 +78,8 @@ export class UsersService {
   }
 
   // Admin methods
-  async findAll(query: { search?: string; status?: string; page?: number; limit?: number }) {
-    const { search, status, page = 1, limit = 10 } = query;
+  async findAll(query: { search?: string; status?: string; role?: string; page?: number; limit?: number }) {
+    const { search, status, role, page = 1, limit = 10 } = query;
     const filter: any = {};
 
     if (search) {
@@ -88,6 +92,7 @@ export class UsersService {
 
     if (status === 'active') filter.isActive = true;
     if (status === 'inactive') filter.isActive = false;
+    if (role) filter.role = role;
 
     const total = await this.userModel.countDocuments(filter);
     const users = await this.userModel
@@ -130,6 +135,19 @@ export class UsersService {
     return { message: 'User updated', user };
   }
 
+  async toggleStatus(id: string) {
+    const user = await this.userModel.findById(id);
+    if (!user) throw new NotFoundException('User not found');
+
+    user.isActive = !user.isActive;
+    await user.save();
+
+    return {
+      message: `User ${user.isActive ? 'activated' : 'deactivated'}`,
+      user,
+    };
+  }
+
   async deleteUser(id: string) {
     const user = await this.userModel.findByIdAndDelete(id);
     if (!user) throw new NotFoundException('User not found');
@@ -154,5 +172,53 @@ export class UsersService {
       newThisMonth: thisMonth,
       avgOrderValue: avgSpent[0]?.avg ? Math.round(avgSpent[0].avg) : 0,
     };
+  }
+
+  // Recipients methods
+  async getRecipients(userId: string) {
+    const recipients = await this.recipientModel.find({ userId }).sort({ isPrimary: -1, createdAt: -1 });
+    return { recipients };
+  }
+
+  async getRecipientById(userId: string, recipientId: string) {
+    const recipient = await this.recipientModel.findOne({ _id: recipientId, userId });
+    if (!recipient) throw new NotFoundException('Recipient not found');
+    return { data: recipient };
+  }
+
+  async createRecipient(userId: string, data: any) {
+    // If this is set as primary, unset other primary recipients
+    if (data.isPrimary) {
+      await this.recipientModel.updateMany({ userId }, { $set: { isPrimary: false } });
+    }
+
+    const recipient = await this.recipientModel.create({ userId, ...data });
+    return { success: true, data: recipient };
+  }
+
+  async updateRecipient(userId: string, recipientId: string, data: any) {
+    // If this is set as primary, unset other primary recipients
+    if (data.isPrimary) {
+      await this.recipientModel.updateMany({ userId, _id: { $ne: recipientId } }, { $set: { isPrimary: false } });
+    }
+
+    const recipient = await this.recipientModel.findOneAndUpdate({ _id: recipientId, userId }, { $set: data }, { returnDocument: 'after' });
+    if (!recipient) throw new NotFoundException('Recipient not found');
+    return { success: true, data: recipient };
+  }
+
+  async deleteRecipient(userId: string, recipientId: string) {
+    const result = await this.recipientModel.findOneAndDelete({ _id: recipientId, userId });
+    if (!result) throw new NotFoundException('Recipient not found');
+    return { success: true, message: 'Recipient deleted' };
+  }
+
+  async setPrimaryRecipient(userId: string, recipientId: string) {
+    // Unset other primary recipients
+    await this.recipientModel.updateMany({ userId }, { $set: { isPrimary: false } });
+
+    const recipient = await this.recipientModel.findOneAndUpdate({ _id: recipientId, userId }, { $set: { isPrimary: true } }, { returnDocument: 'after' });
+    if (!recipient) throw new NotFoundException('Recipient not found');
+    return { success: true, data: recipient };
   }
 }

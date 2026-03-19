@@ -142,6 +142,21 @@ export class OrdersController {
     return this.ordersService.findById(id);
   }
 
+  // Tracking API: Get order tracking details
+  @Get(':id/tracking')
+  @UseGuards(AuthGuard('jwt'))
+  getTracking(@Request() req: any, @Param('id') id: string) {
+    return this.ordersService.getTracking(id, req.user);
+  }
+
+  // Reminder API: Resend customer WhatsApp reminder
+  @Post(':id/reminder')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin', 'staff')
+  sendReminder(@Request() req: any, @Param('id') id: string) {
+    return this.ordersService.sendTrackingReminder(id, req.user?.fullName || req.user?.role || 'system');
+  }
+
   // Admin: Create order
   @Post('admin')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
