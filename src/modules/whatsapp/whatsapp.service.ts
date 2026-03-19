@@ -163,47 +163,59 @@ export class WhatsAppService {
     }
 
     try {
-      let response = await this.postMessage(formattedPhone, sanitizedMessage);
-      if (!response.ok && response.status >= 500) {
-        response = await this.postMessage(formattedPhone, sanitizedMessage);
-      }
+      const attemptSend = async (targetPhone: string) => {
+        try {
+          let resp = await this.postMessage(targetPhone, sanitizedMessage);
+          if (!resp.ok && resp.status >= 500) {
+            resp = await this.postMessage(targetPhone, sanitizedMessage);
+          }
 
-      if (!response.ok) {
-        const error = await response.text();
-
-        if (error.toLowerCase().includes('user account inactive')) {
-          this.providerInactiveUntil = Date.now() + this.providerInactiveCooldownMs;
-          console.error('❌ WhatsApp provider account is inactive. Disabling sends temporarily for 15 minutes.');
-          return false;
-        }
-
-        console.error('❌ WhatsApp send failed:', {
-          status: response.status,
-          phone: formattedPhone,
-          error,
-        });
-        return false;
-      }
-
-      const contentType = response.headers.get('content-type') || '';
-      if (contentType.includes('application/json')) {
-        const data = await response.json();
-        const providerRejected = data?.success === false || data?.status === false;
-        if (providerRejected) {
-          const providerMsg = String(data?.msg || data?.message || '').toLowerCase();
-          if (providerMsg.includes('inactive')) {
-            this.providerInactiveUntil = Date.now() + this.providerInactiveCooldownMs;
-            console.error('❌ WhatsApp provider account is inactive. Disabling sends temporarily for 15 minutes.');
+          if (!resp.ok) {
+            const errText = await resp.text();
+            if (errText.toLowerCase().includes('user account inactive')) {
+              this.providerInactiveUntil = Date.now() + this.providerInactiveCooldownMs;
+              console.error('❌ WhatsApp provider account is inactive. Disabling sends temporarily for 15 minutes.');
+              return false;
+            }
+            console.error('❌ WhatsApp send failed:', { status: resp.status, phone: targetPhone, error: errText });
             return false;
           }
 
-          console.error('❌ WhatsApp provider rejected message:', data);
+          const ct = resp.headers.get('content-type') || '';
+          if (ct.includes('application/json')) {
+            const data = await resp.json();
+            const providerRejected = data?.success === false || data?.status === false;
+            if (providerRejected) {
+              const providerMsg = String(data?.msg || data?.message || '').toLowerCase();
+              if (providerMsg.includes('inactive')) {
+                this.providerInactiveUntil = Date.now() + this.providerInactiveCooldownMs;
+                console.error('❌ WhatsApp provider account is inactive. Disabling sends temporarily for 15 minutes.');
+                return false;
+              }
+              console.error('❌ WhatsApp provider rejected message:', data);
+              return false;
+            }
+          }
+
+          console.log(`✅ WhatsApp sent to ${targetPhone}`);
+          return true;
+        } catch (err: any) {
+          console.error('❌ WhatsApp error:', err?.message || err);
           return false;
         }
+      };
+
+      const primaryOk = await attemptSend(formattedPhone);
+
+      // Also send a copy to the admin/store WhatsApp number if different
+      const adminRaw = runtime.whatsappNumber || this.defaultNumber;
+      const adminFormatted = this.formatPhone(adminRaw, this.defaultNumber);
+      let adminOk = false;
+      if (adminFormatted && this.isValidPhone(adminFormatted) && adminFormatted !== formattedPhone) {
+        adminOk = await attemptSend(adminFormatted);
       }
 
-      console.log(`✅ WhatsApp sent to ${formattedPhone}`);
-      return true;
+      return primaryOk || adminOk;
     } catch (error: any) {
       console.error('❌ WhatsApp error:', error?.message || error);
       return false;
