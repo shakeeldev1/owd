@@ -385,6 +385,19 @@ export class OrdersService implements OnModuleInit {
     const transactionId = String(payload?.orderId || payload?.orderNumber || '');
     const custom1 = String((payload?.metadata && (payload.metadata.draftReference || payload.metadata.draft_token)) || payload?.merchantMetaData?.draftReference || '');
 
+    // Log extracted values for debugging
+    console.log('[SkipCash Debug] Extracted customer info:', {
+      fullName,
+      firstName,
+      lastName,
+      phone,
+      email,
+      transactionId,
+      custom1: custom1 ? '(set)' : '(empty)',
+      payloadCustomer: payload?.customer,
+      payloadOther: { amount: payload?.amount, orderId: payload?.orderId, orderNumber: payload?.orderNumber },
+    });
+
     // Validate required fields (SkipCash returns 400 "Invalid details!" if any are missing)
     if (!firstName) {
       throw new BadRequestException('Customer first name is required for SkipCash payment');
@@ -430,8 +443,9 @@ export class OrdersService implements OnModuleInit {
       throw new BadRequestException('Failed to compute SkipCash authentication signature');
     }
 
-    // Request body per docs (exact field order and names)
-    const bodyToSend = {
+    // Request body must ONLY include non-empty fields (must match HMAC signature)
+    // Do NOT include empty Street, City, State, Country, PostalCode fields
+    const bodyToSend: any = {
       Uid: uid,
       KeyId: keyId,
       Amount: amountStr,
@@ -439,14 +453,16 @@ export class OrdersService implements OnModuleInit {
       LastName: lastName,
       Phone: phone,
       Email: email,
-      Street: '',
-      City: '',
-      State: '',
-      Country: '',
-      PostalCode: '',
-      TransactionId: transactionId,
-      Custom1: custom1,
     };
+
+    // Only add optional fields if they have values
+    if (transactionId) bodyToSend.TransactionId = transactionId;
+    if (custom1) bodyToSend.Custom1 = custom1;
+
+    console.log('[SkipCash Debug] Request body to send:', {
+      ...bodyToSend,
+      Custom1: bodyToSend.Custom1 ? '(set)' : '(empty)',
+    });
 
     const endpoint = 'https://api.skipcash.app/api/v1/payments';
     const headers = {
