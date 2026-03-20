@@ -1,0 +1,158 @@
+{
+  "info": {
+    "name": "SkipCash Payment Gateway",
+    "description": "SkipCash payment integration testing - follows official docs exactly",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create Payment Session",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"Uid\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"KeyId\": \"c8efe8c1-1314-4cde-94ab-d76f8ccdecec\",\n  \"Amount\": \"100.00\",\n  \"FirstName\": \"Test\",\n  \"LastName\": \"User\",\n  \"Phone\": \"971500000000\",\n  \"Email\": \"test@oudalzubarah.com\",\n  \"Street\": \"\",\n  \"City\": \"\",\n  \"State\": \"\",\n  \"Country\": \"\",\n  \"PostalCode\": \"\",\n  \"TransactionId\": \"ORD-20260320-1234\",\n  \"Custom1\": \"\"\n}"
+        },
+        "url": {
+          "raw": "https://api.skipcash.app/api/v1/payments",
+          "protocol": "https",
+          "host": [
+            "api",
+            "skipcash",
+            "app"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "payments"
+          ]
+        },
+        "description": "Official SkipCash payment session creation per documentation"
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// SkipCash HMAC Authentication Pre-Request Script",
+              "// Based on official SkipCash Node.js documentation",
+              "",
+              "const CryptoJS = require('crypto-js');",
+              "",
+              "// Credentials from SkipCash Dashboard",
+              "const secretKey = 'YOUR_SECRET_KEY_HERE'; // Replace with actual secret from dashboard",
+              "const keyId = 'c8efe8c1-1314-4cde-94ab-d76f8ccdecec';",
+              "const clientId = 'e573f7ae-a0df-4a88-aca0-dde7233a3b0f';",
+              "",
+              "// Parse request body",
+              "const body = pm.request.body.raw ? JSON.parse(pm.request.body.raw) : {};",
+              "",
+              "// Ensure all required fields exist (empty string if not provided)",
+              "const paymentDetails = {",
+              "  Uid: body.Uid || pm.variables.replaceRecursive('{{$randomUUID}}'),",
+              "  KeyId: body.KeyId || keyId,",
+              "  Amount: body.Amount || '',",
+              "  FirstName: body.FirstName || '',",
+              "  LastName: body.LastName || '',",
+              "  Phone: body.Phone || '',",
+              "  Email: body.Email || '',",
+              "  Street: body.Street || '',",
+              "  City: body.City || '',",
+              "  State: body.State || '',",
+              "  Country: body.Country || '',",
+              "  PostalCode: body.PostalCode || '',",
+              "  TransactionId: body.TransactionId || '',",
+              "  Custom1: body.Custom1 || ''",
+              "};",
+              "",
+              "// Build combinedData exactly as per docs (order matters)",
+              "const combinedData = `Uid=${paymentDetails.Uid},KeyId=${paymentDetails.KeyId},Amount=${paymentDetails.Amount},FirstName=${paymentDetails.FirstName},LastName=${paymentDetails.LastName},Phone=${paymentDetails.Phone},Email=${paymentDetails.Email},Street=${paymentDetails.Street},City=${paymentDetails.City},State=${paymentDetails.State},Country=${paymentDetails.Country},PostalCode=${paymentDetails.PostalCode},TransactionId=${paymentDetails.TransactionId},Custom1=${paymentDetails.Custom1}`;",
+              "",
+              "// Compute HMAC-SHA256 and convert to Base64",
+              "const combinedDataHash = CryptoJS.HmacSHA256(combinedData, secretKey);",
+              "const hashInBase64 = CryptoJS.enc.Base64.stringify(combinedDataHash);",
+              "",
+              "// Set Authorization header with HMAC",
+              "pm.request.headers.upsert({key: 'Authorization', value: hashInBase64});",
+              "pm.request.headers.upsert({key: 'Content-Type', value: 'application/json'});",
+              "",
+              "// Update request body with finalized payment details",
+              "pm.request.body.update(JSON.stringify(paymentDetails));",
+              "",
+              "// Log for debugging",
+              "console.log('Combined Data:', combinedData);",
+              "console.log('Authorization HMAC:', hashInBase64);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Test script to capture response details",
+              "pm.test('Status code is 200 or 201', function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              "",
+              "pm.test('Response contains checkoutUrl', function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('resultObj');",
+              "    pm.expect(jsonData.resultObj).to.have.property('CheckoutUrl');",
+              "});",
+              "",
+              "// Save checkoutUrl for later use",
+              "var jsonData = pm.response.json();",
+              "if (jsonData && jsonData.resultObj && jsonData.resultObj.CheckoutUrl) {",
+              "    pm.environment.set('checkoutUrl', jsonData.resultObj.CheckoutUrl);",
+              "    pm.environment.set('paymentId', jsonData.resultObj.PaymentId);",
+              "}"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "SKIPCASH_SECRET",
+      "value": "YOUR_SECRET_KEY_HERE",
+      "type": "string",
+      "disabled": false
+    },
+    {
+      "key": "SKIPCASH_KEY_ID",
+      "value": "c8efe8c1-1314-4cde-94ab-d76f8ccdecec",
+      "type": "string",
+      "disabled": false
+    },
+    {
+      "key": "SKIPCASH_CLIENT_ID",
+      "value": "e573f7ae-a0df-4a88-aca0-dde7233a3b0f",
+      "type": "string",
+      "disabled": false
+    },
+    {
+      "key": "checkoutUrl",
+      "value": "",
+      "type": "string",
+      "disabled": false
+    },
+    {
+      "key": "paymentId",
+      "value": "",
+      "type": "string",
+      "disabled": false
+    }
+  ]
+}

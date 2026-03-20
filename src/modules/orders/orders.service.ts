@@ -365,184 +365,109 @@ export class OrdersService implements OnModuleInit {
   }
 
   private async requestSkipCashSession(payload: any) {
-    const clientIdentifiers = this.getSkipCashClientIdentifiers();
-    if (clientIdentifiers.length === 0) {
-      throw new BadRequestException('SKIPCASH_KEY_ID or SKIPCASH_CLIENT_ID must be configured');
+    // Per SkipCash official docs: use single endpoint and minimal headers
+    const keyId = (this.configService.get<string>('SKIPCASH_KEY_ID') || '').trim();
+    const secret = (this.configService.get<string>('SKIPCASH_SECRET') || '').trim();
+
+    if (!keyId || !secret) {
+      throw new BadRequestException('SKIPCASH_KEY_ID and SKIPCASH_SECRET must be configured');
     }
 
-    const configuredApiUrl = this.configService.get<string>('SKIPCASH_API_URL') || 'https://api.skipcash.app/api/v1/payments';
-    const secrets = this.getSkipCashSecrets();
-    const payloadCandidates = this.buildSkipCashPayloadCandidates(payload);
+    // Extract customer and transaction info
+    const uid = uuidv4();
+    const amountStr = String(payload?.amount ?? '').padEnd(2, '0') || '0.00';
+    const fullName = String(payload?.customer?.name || '').trim();
+    const names = fullName ? fullName.split(/\s+/) : [];
+    const firstName = names.length > 0 ? names[0] : '';
+    const lastName = names.length > 1 ? names.slice(1).join(' ') : '';
+    const phone = String(payload?.customer?.phone || '');
+    const email = String(payload?.customer?.email || '');
+    const transactionId = String(payload?.orderId || payload?.orderNumber || '');
+    const custom1 = String((payload?.metadata && (payload.metadata.draftReference || payload.metadata.draft_token)) || payload?.merchantMetaData?.draftReference || '');
 
-    const endpointCandidates = this.buildSkipCashEndpointCandidates(configuredApiUrl);
+    // Build combined data exactly as per docs (order and casing critical)
+    const combinedData = `Uid=${uid},KeyId=${keyId},Amount=${amountStr},FirstName=${firstName},LastName=${lastName},Phone=${phone},Email=${email},Street=,City=,State=,Country=,PostalCode=,TransactionId=${transactionId},Custom1=${custom1}`;
+
+    // Compute HMAC-SHA256 and base64 encode
+    let authorizationHeader = '';
+    try {
+      const hmac = crypto.createHmac('sha256', secret).update(combinedData).digest('base64');
+      authorizationHeader = hmac;
+    } catch (e) {
+      console.error('HMAC computation failed', e);
+      throw new BadRequestException('Failed to compute SkipCash authentication signature');
+    }
+
+    // Request body per docs (exact field order and names)
+    const bodyToSend = {
+      Uid: uid,
+      KeyId: keyId,
+      Amount: amountStr,
+      FirstName: firstName,
+      LastName: lastName,
+      Phone: phone,
+      Email: email,
+      Street: '',
+      City: '',
+      State: '',
+      Country: '',
+      PostalCode: '',
+      TransactionId: transactionId,
+      Custom1: custom1,
+    };
+
+    const endpoint = 'https://api.skipcash.app/api/v1/payments';
+    const headers = {
+      'Authorization': authorizationHeader,
+      'Content-Type': 'application/json',
+    };
 
     let responseBody: any = {};
     let responseStatus = 0;
-    let selectedEndpoint = endpointCandidates[0];
-    let selectedClientIdentifier = '';
-    let ok = false;
-    let shouldStopExploring = false;
 
-    const secretCandidates = secrets.length > 0 ? secrets : [''];
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(bodyToSend),
+      });
 
-    for (const endpoint of endpointCandidates) {
-      for (const clientIdentifier of clientIdentifiers) {
-        for (const secret of secretCandidates) {
-          const headerCandidates: Record<string, string>[] = [
-            {
-              'content-type': 'application/json',
-              'x-client-id': clientIdentifier,
-            },
-            {
-              'content-type': 'application/json',
-              'x-key-id': clientIdentifier,
-            },
-          ];
-
-          for (const headers of headerCandidates) {
-            // prepare body-to-send (may be augmented when using HMAC auth)
-              for (const payloadVariant of payloadCandidates) {
-                selectedEndpoint = endpoint;
-                selectedClientIdentifier = clientIdentifier;
-
-                let bodyToSend: any = payloadVariant;
-
-                // If we have a secret, try both possible KeyId usages: configured SKIPCASH_KEY_ID and the current clientIdentifier.
-                const configuredKeyId = (this.configService.get<string>('SKIPCASH_KEY_ID') || '').trim();
-                const hmacKeyIdCandidates = secret ? Array.from(new Set([configuredKeyId, clientIdentifier].filter(Boolean))) : [''];
-
-                for (const hmacKeyId of hmacKeyIdCandidates) {
-                  // prepare headers/body for this hmacKeyId attempt
-                  const attemptHeaders = { ...headers } as Record<string, string>;
-
-                  if (secret && hmacKeyId) {
-                    const uid = uuidv4();
-                    const amountStr = String(payloadVariant?.amount ?? '');
-                    const fullName = String(payloadVariant?.customer?.name || '').trim();
-                    const names = fullName ? fullName.split(/\s+/) : [];
-                    const firstName = names.length > 0 ? names[0] : '';
-                    const lastName = names.length > 1 ? names.slice(1).join(' ') : '';
-                    const phone = String(payloadVariant?.customer?.phone || '');
-                    const email = String(payloadVariant?.customer?.email || '');
-                    const transactionId = String(payloadVariant?.orderId || payloadVariant?.orderNumber || '');
-                    const custom1 = String((payloadVariant?.metadata && (payloadVariant.metadata.draftReference || payloadVariant.metadata.draft_token)) || payloadVariant?.merchantMetaData?.draftReference || '');
-
-                    const combinedData = `Uid=${uid},KeyId=${hmacKeyId},Amount=${amountStr},FirstName=${firstName},LastName=${lastName},Phone=${phone},Email=${email},Street=,City=,State=,Country=,PostalCode=,TransactionId=${transactionId},Custom1=${custom1}`;
-
-                    try {
-                      const hmac = crypto.createHmac('sha256', secret).update(combinedData).digest('base64');
-                      attemptHeaders['Authorization'] = hmac;
-                    } catch (e) {
-                      attemptHeaders['Authorization'] = `Bearer ${secret}`;
-                    }
-
-                    attemptHeaders['x-api-key'] = secret;
-                    attemptHeaders['x-client-secret'] = secret;
-                    attemptHeaders['x-key-id'] = hmacKeyId;
-                    attemptHeaders['x-client-id'] = clientIdentifier;
-
-                    bodyToSend = {
-                      Uid: uid,
-                      KeyId: hmacKeyId,
-                      Amount: amountStr,
-                      FirstName: firstName,
-                      LastName: lastName,
-                      Phone: phone,
-                      Email: email,
-                      Street: payloadVariant?.Street ?? payloadVariant?.street ?? '',
-                      City: payloadVariant?.City ?? payloadVariant?.city ?? '',
-                      State: payloadVariant?.State ?? payloadVariant?.state ?? '',
-                      Country: payloadVariant?.Country ?? payloadVariant?.country ?? '',
-                      PostalCode: payloadVariant?.PostalCode ?? payloadVariant?.postalCode ?? payloadVariant?.postal_code ?? '',
-                      TransactionId: transactionId,
-                      Custom1: custom1,
-                      // include any extra fields passed in the payload (e.g., successUrl, webhookUrl)
-                      ...payloadVariant,
-                    };
-                  } else {
-                    // no secret: use headers/body as-is
-                    bodyToSend = payloadVariant;
-                  }
-
-                  const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: attemptHeaders,
-                    body: JSON.stringify(bodyToSend),
-                  });
-
-                  responseStatus = response.status;
-                  const responseText = await response.text();
-                  try {
-                    responseBody = responseText ? JSON.parse(responseText) : {};
-                  } catch {
-                    responseBody = { raw: responseText };
-                  }
-
-                  if (response.ok) {
-                    ok = true;
-                    break;
-                  }
-
-                  if (response.status === 404) {
-                    break;
-                  }
-
-                  if (response.status === 401 || response.status === 403) {
-                    break;
-                  }
-
-                  if (response.status === 400 || response.status === 422) {
-                    shouldStopExploring = true;
-                  }
-                }
-
-                if (ok) break;
-                if (shouldStopExploring) break;
-              }
-
-            if (ok) break;
-            if (shouldStopExploring) break;
-          }
-
-          if (ok) break;
-          if (shouldStopExploring) break;
-
-          if (responseStatus === 404 || responseStatus === 401 || responseStatus === 403) {
-            continue;
-          }
-        }
-
-        if (ok) break;
-        if (shouldStopExploring) break;
+      responseStatus = response.status;
+      const responseText = await response.text();
+      try {
+        responseBody = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        responseBody = { raw: responseText };
       }
 
-      if (ok) {
-        break;
-      }
+      if (!response.ok) {
+        const providerMessage = String(
+          responseBody?.message
+          || responseBody?.error
+          || responseBody?.msg
+          || responseBody?.detail
+          || responseBody?.errorMessage
+          || (Array.isArray(responseBody?.errors) ? responseBody.errors.map((e: any) => String(e?.message || e?.msg || e || '')).filter(Boolean).join('; ') : '')
+          || responseBody?.raw
+          || '',
+        ).trim();
 
-      if (shouldStopExploring) {
-        break;
+        throw new BadRequestException(
+          `SkipCash session creation failed (${responseStatus}) using KeyId ${keyId}. ${providerMessage || 'Please verify SKIPCASH_KEY_ID and SKIPCASH_SECRET are correct and enabled in dashboard.'}`,
+        );
       }
+    } catch (error: any) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      console.error('SkipCash request failed', error);
+      throw new BadRequestException(`SkipCash communication failed: ${error.message || 'Unknown error'}`);
     }
 
-    if (!ok) {
-      const providerMessage = String(
-        responseBody?.message
-        || responseBody?.error
-        || responseBody?.msg
-        || responseBody?.detail
-        || (Array.isArray(responseBody?.errors) ? responseBody.errors.map((e: any) => String(e?.message || e?.msg || e || '')).filter(Boolean).join('; ') : '')
-        || responseBody?.raw
-        || '',
-      ).trim();
-
-      throw new BadRequestException(
-        `SkipCash session creation failed at ${selectedEndpoint} (${responseStatus}) using id ${selectedClientIdentifier || 'n/a'}. ${providerMessage || 'Please verify SKIPCASH_API_URL, FRONTEND_URL return URLs, and SkipCash key id/secret.'}`,
-      );
-    }
-
+    // Extract checkout URL and payment ID from response
     const checkoutUrl =
-      responseBody?.checkoutUrl
+      responseBody?.resultObj?.CheckoutUrl
+      || responseBody?.checkoutUrl
       || responseBody?.paymentUrl
       || responseBody?.url
       || responseBody?.redirectUrl
@@ -551,7 +476,8 @@ export class OrdersService implements OnModuleInit {
       || responseBody?.data?.url;
 
     const paymentId =
-      responseBody?.paymentId
+      responseBody?.resultObj?.PaymentId
+      || responseBody?.paymentId
       || responseBody?.transactionId
       || responseBody?.id
       || responseBody?.data?.paymentId
