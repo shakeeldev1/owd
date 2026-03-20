@@ -3,8 +3,8 @@ import { OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
 import { Model, Types } from 'mongoose';
-import * as crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
+import CryptoJS from 'crypto-js';
 import { Order, OrderDocument } from './schemas/order.schema';
 import {
   CreateOrderDto,
@@ -385,14 +385,29 @@ export class OrdersService implements OnModuleInit {
     const transactionId = String(payload?.orderId || payload?.orderNumber || '');
     const custom1 = String((payload?.metadata && (payload.metadata.draftReference || payload.metadata.draft_token)) || payload?.merchantMetaData?.draftReference || '');
 
-    // Build combined data exactly as per docs (order and casing critical)
-    const combinedData = `Uid=${uid},KeyId=${keyId},Amount=${amountStr},FirstName=${firstName},LastName=${lastName},Phone=${phone},Email=${email},Street=,City=,State=,Country=,PostalCode=,TransactionId=${transactionId},Custom1=${custom1}`;
+    // Build combined data with ONLY NON-EMPTY FIELDS (per SkipCash docs: "Combine not empty request fields")
+    // Order is critical: Uid, KeyId, Amount, FirstName, LastName, Phone, Email, [optional fields]
+    const combinedDataParts: string[] = [
+      `Uid=${uid}`,
+      `KeyId=${keyId}`,
+      `Amount=${amountStr}`,
+      `FirstName=${firstName}`,
+      `LastName=${lastName}`,
+      `Phone=${phone}`,
+      `Email=${email}`,
+    ];
+    
+    // Only add optional fields if they have values
+    if (transactionId) combinedDataParts.push(`TransactionId=${transactionId}`);
+    if (custom1) combinedDataParts.push(`Custom1=${custom1}`);
+    
+    const combinedData = combinedDataParts.join(',');
 
-    // Compute HMAC-SHA256 and base64 encode
+    // Compute HMAC-SHA256 using crypto-js (matches SkipCash docs exactly)
     let authorizationHeader = '';
     try {
-      const hmac = crypto.createHmac('sha256', secret).update(combinedData).digest('base64');
-      authorizationHeader = hmac;
+      const combinedDataHash = CryptoJS.HmacSHA256(combinedData, secret);
+      authorizationHeader = CryptoJS.enc.Base64.stringify(combinedDataHash);
     } catch (e) {
       console.error('HMAC computation failed', e);
       throw new BadRequestException('Failed to compute SkipCash authentication signature');
@@ -466,23 +481,26 @@ export class OrdersService implements OnModuleInit {
 
     // Extract checkout URL and payment ID from response
     const checkoutUrl =
-      responseBody?.resultObj?.CheckoutUrl
+      responseBody?.resultObj?.payUrl
+      || responseBody?.resultObj?.CheckoutUrl
       || responseBody?.checkoutUrl
       || responseBody?.paymentUrl
       || responseBody?.url
       || responseBody?.redirectUrl
+      || responseBody?.data?.payUrl
       || responseBody?.data?.checkoutUrl
       || responseBody?.data?.paymentUrl
       || responseBody?.data?.url;
 
     const paymentId =
-      responseBody?.resultObj?.PaymentId
+      responseBody?.resultObj?.id
+      || responseBody?.resultObj?.PaymentId
       || responseBody?.paymentId
       || responseBody?.transactionId
       || responseBody?.id
+      || responseBody?.data?.id
       || responseBody?.data?.paymentId
       || responseBody?.data?.transactionId
-      || responseBody?.data?.id
       || '';
 
     if (!checkoutUrl) {
