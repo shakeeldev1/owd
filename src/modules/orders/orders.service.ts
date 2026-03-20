@@ -442,11 +442,22 @@ export class OrdersService implements OnModuleInit {
                     attemptHeaders['x-client-id'] = clientIdentifier;
 
                     bodyToSend = {
-                      ...payloadVariant,
                       Uid: uid,
                       KeyId: hmacKeyId,
+                      Amount: amountStr,
+                      FirstName: firstName,
+                      LastName: lastName,
+                      Phone: phone,
+                      Email: email,
+                      Street: payloadVariant?.Street ?? payloadVariant?.street ?? '',
+                      City: payloadVariant?.City ?? payloadVariant?.city ?? '',
+                      State: payloadVariant?.State ?? payloadVariant?.state ?? '',
+                      Country: payloadVariant?.Country ?? payloadVariant?.country ?? '',
+                      PostalCode: payloadVariant?.PostalCode ?? payloadVariant?.postalCode ?? payloadVariant?.postal_code ?? '',
                       TransactionId: transactionId,
                       Custom1: custom1,
+                      // include any extra fields passed in the payload (e.g., successUrl, webhookUrl)
+                      ...payloadVariant,
                     };
                   } else {
                     // no secret: use headers/body as-is
