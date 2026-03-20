@@ -408,6 +408,10 @@ export class OrdersService implements OnModuleInit {
               let bodyToSend: any = payloadVariant;
 
               if (secret) {
+                // Prefer configured SKIPCASH_KEY_ID when computing HMAC and sending KeyId
+                const configuredKeyId = (this.configService.get<string>('SKIPCASH_KEY_ID') || '').trim();
+                const hmacKeyId = configuredKeyId || clientIdentifier;
+
                 // Try SkipCash documented HMAC auth: Authorization = Base64(HMAC-SHA256(combinedData, secret))
                 const uid = uuidv4();
                 const amountStr = String(payloadVariant?.amount ?? '');
@@ -420,23 +424,27 @@ export class OrdersService implements OnModuleInit {
                 const transactionId = String(payloadVariant?.orderId || payloadVariant?.orderNumber || '');
                 const custom1 = String((payloadVariant?.metadata && (payloadVariant.metadata.draftReference || payloadVariant.metadata.draft_token)) || payloadVariant?.merchantMetaData?.draftReference || '');
 
-                const combinedData = `Uid=${uid},KeyId=${clientIdentifier},Amount=${amountStr},FirstName=${firstName},LastName=${lastName},Phone=${phone},Email=${email},Street=,City=,State=,Country=,PostalCode=,TransactionId=${transactionId},Custom1=${custom1}`;
+                const combinedData = `Uid=${uid},KeyId=${hmacKeyId},Amount=${amountStr},FirstName=${firstName},LastName=${lastName},Phone=${phone},Email=${email},Street=,City=,State=,Country=,PostalCode=,TransactionId=${transactionId},Custom1=${custom1}`;
 
                 try {
                   const hmac = crypto.createHmac('sha256', secret).update(combinedData).digest('base64');
-                  headers.authorization = hmac;
+                  // set Authorization header exactly as provider expects
+                  headers['Authorization'] = hmac;
                 } catch (e) {
-                  headers.authorization = `Bearer ${secret}`;
+                  headers['Authorization'] = `Bearer ${secret}`;
                 }
 
                 // keep fallback secret headers for compatibility
                 headers['x-api-key'] = secret;
                 headers['x-client-secret'] = secret;
+                // ensure the key id headers are present and use the HMAC key id
+                headers['x-key-id'] = hmacKeyId;
+                headers['x-client-id'] = clientIdentifier;
 
                 bodyToSend = {
                   ...payloadVariant,
                   Uid: uid,
-                  KeyId: clientIdentifier,
+                  KeyId: hmacKeyId,
                   TransactionId: transactionId,
                   Custom1: custom1,
                 };
