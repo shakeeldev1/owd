@@ -380,10 +380,27 @@ export class OrdersService implements OnModuleInit {
     const names = fullName ? fullName.split(/\s+/) : [];
     const firstName = names.length > 0 ? names[0] : '';
     const lastName = names.length > 1 ? names.slice(1).join(' ') : '';
-    const phone = String(payload?.customer?.phone || '');
-    const email = String(payload?.customer?.email || '');
+    const phone = String(payload?.customer?.phone || '').trim();
+    const email = String(payload?.customer?.email || '').trim();
     const transactionId = String(payload?.orderId || payload?.orderNumber || '');
     const custom1 = String((payload?.metadata && (payload.metadata.draftReference || payload.metadata.draft_token)) || payload?.merchantMetaData?.draftReference || '');
+
+    // Validate required fields (SkipCash returns 400 "Invalid details!" if any are missing)
+    if (!firstName) {
+      throw new BadRequestException('Customer first name is required for SkipCash payment');
+    }
+    if (!lastName) {
+      throw new BadRequestException('Customer last name is required for SkipCash payment');
+    }
+    if (!phone) {
+      throw new BadRequestException('Customer phone number is required for SkipCash payment');
+    }
+    if (!email || !email.includes('@')) {
+      throw new BadRequestException('Valid customer email is required for SkipCash payment');
+    }
+    if (!transactionId) {
+      throw new BadRequestException('Transaction ID (orderId) is required for SkipCash payment');
+    }
 
     // Build combined data with ONLY NON-EMPTY FIELDS (per SkipCash docs: "Combine not empty request fields")
     // Order is critical: Uid, KeyId, Amount, FirstName, LastName, Phone, Email, [optional fields]
@@ -467,9 +484,18 @@ export class OrdersService implements OnModuleInit {
           || '',
         ).trim();
 
-        throw new BadRequestException(
-          `SkipCash session creation failed (${responseStatus}) using KeyId ${keyId}. ${providerMessage || 'Please verify SKIPCASH_KEY_ID and SKIPCASH_SECRET are correct and enabled in dashboard.'}`,
-        );
+        const errorDetail = `SkipCash rejected request (${responseStatus}): ${providerMessage || 'Unknown error'}`;
+        console.error('SkipCash request failed', {
+          keyId,
+          firstName,
+          lastName,
+          phone,
+          email,
+          amount: amountStr,
+          errorMessage: providerMessage,
+        });
+
+        throw new BadRequestException(errorDetail);
       }
     } catch (error: any) {
       if (error instanceof BadRequestException) {
@@ -607,6 +633,9 @@ export class OrdersService implements OnModuleInit {
 
     await this.ensurePaymentMethodEnabled('skipcash');
 
+    // Get user data for fallbacks
+    const user = await this.userModel.findById(userId).select('fullName email phone').lean();
+
     const backendUrl = this.configService.get<string>('BACKEND_URL') || 'http://localhost:5000';
     const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
 
@@ -626,9 +655,9 @@ export class OrdersService implements OnModuleInit {
       orderId: String(order._id),
       orderNumber: order.orderNumber,
       customer: {
-        name: order.customer?.name || 'Customer',
-        email: order.customer?.email || '',
-        phone: order.customer?.phone || '',
+        name: order.customer?.name || user?.fullName || '',
+        email: order.customer?.email || user?.email || '',
+        phone: order.customer?.phone || user?.phone || '',
       },
       ...(successUrl ? { successUrl } : {}),
       ...(cancelUrl ? { cancelUrl } : {}),
