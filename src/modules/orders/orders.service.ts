@@ -3,6 +3,8 @@ import { OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
 import { Model, Types } from 'mongoose';
+import * as crypto from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 import { Order, OrderDocument } from './schemas/order.schema';
 import {
   CreateOrderDto,
@@ -398,20 +400,52 @@ export class OrdersService implements OnModuleInit {
           ];
 
           for (const headers of headerCandidates) {
-            if (secret) {
-              headers.authorization = `Bearer ${secret}`;
-              headers['x-api-key'] = secret;
-              headers['x-client-secret'] = secret;
-            }
-
+            // prepare body-to-send (may be augmented when using HMAC auth)
             for (const payloadVariant of payloadCandidates) {
               selectedEndpoint = endpoint;
               selectedClientIdentifier = clientIdentifier;
 
+              let bodyToSend: any = payloadVariant;
+
+              if (secret) {
+                // Try SkipCash documented HMAC auth: Authorization = Base64(HMAC-SHA256(combinedData, secret))
+                const uid = uuidv4();
+                const amountStr = String(payloadVariant?.amount ?? '');
+                const fullName = String(payloadVariant?.customer?.name || '').trim();
+                const names = fullName ? fullName.split(/\s+/) : [];
+                const firstName = names.length > 0 ? names[0] : '';
+                const lastName = names.length > 1 ? names.slice(1).join(' ') : '';
+                const phone = String(payloadVariant?.customer?.phone || '');
+                const email = String(payloadVariant?.customer?.email || '');
+                const transactionId = String(payloadVariant?.orderId || payloadVariant?.orderNumber || '');
+                const custom1 = String((payloadVariant?.metadata && (payloadVariant.metadata.draftReference || payloadVariant.metadata.draft_token)) || payloadVariant?.merchantMetaData?.draftReference || '');
+
+                const combinedData = `Uid=${uid},KeyId=${clientIdentifier},Amount=${amountStr},FirstName=${firstName},LastName=${lastName},Phone=${phone},Email=${email},Street=,City=,State=,Country=,PostalCode=,TransactionId=${transactionId},Custom1=${custom1}`;
+
+                try {
+                  const hmac = crypto.createHmac('sha256', secret).update(combinedData).digest('base64');
+                  headers.authorization = hmac;
+                } catch (e) {
+                  headers.authorization = `Bearer ${secret}`;
+                }
+
+                // keep fallback secret headers for compatibility
+                headers['x-api-key'] = secret;
+                headers['x-client-secret'] = secret;
+
+                bodyToSend = {
+                  ...payloadVariant,
+                  Uid: uid,
+                  KeyId: clientIdentifier,
+                  TransactionId: transactionId,
+                  Custom1: custom1,
+                };
+              }
+
               const response = await fetch(endpoint, {
                 method: 'POST',
                 headers,
-                body: JSON.stringify(payloadVariant),
+                body: JSON.stringify(bodyToSend),
               });
 
               responseStatus = response.status;
