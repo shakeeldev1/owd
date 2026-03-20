@@ -401,89 +401,93 @@ export class OrdersService implements OnModuleInit {
 
           for (const headers of headerCandidates) {
             // prepare body-to-send (may be augmented when using HMAC auth)
-            for (const payloadVariant of payloadCandidates) {
-              selectedEndpoint = endpoint;
-              selectedClientIdentifier = clientIdentifier;
+              for (const payloadVariant of payloadCandidates) {
+                selectedEndpoint = endpoint;
+                selectedClientIdentifier = clientIdentifier;
 
-              let bodyToSend: any = payloadVariant;
+                let bodyToSend: any = payloadVariant;
 
-              if (secret) {
-                // Prefer configured SKIPCASH_KEY_ID when computing HMAC and sending KeyId
+                // If we have a secret, try both possible KeyId usages: configured SKIPCASH_KEY_ID and the current clientIdentifier.
                 const configuredKeyId = (this.configService.get<string>('SKIPCASH_KEY_ID') || '').trim();
-                const hmacKeyId = configuredKeyId || clientIdentifier;
+                const hmacKeyIdCandidates = secret ? Array.from(new Set([configuredKeyId, clientIdentifier].filter(Boolean))) : [''];
 
-                // Try SkipCash documented HMAC auth: Authorization = Base64(HMAC-SHA256(combinedData, secret))
-                const uid = uuidv4();
-                const amountStr = String(payloadVariant?.amount ?? '');
-                const fullName = String(payloadVariant?.customer?.name || '').trim();
-                const names = fullName ? fullName.split(/\s+/) : [];
-                const firstName = names.length > 0 ? names[0] : '';
-                const lastName = names.length > 1 ? names.slice(1).join(' ') : '';
-                const phone = String(payloadVariant?.customer?.phone || '');
-                const email = String(payloadVariant?.customer?.email || '');
-                const transactionId = String(payloadVariant?.orderId || payloadVariant?.orderNumber || '');
-                const custom1 = String((payloadVariant?.metadata && (payloadVariant.metadata.draftReference || payloadVariant.metadata.draft_token)) || payloadVariant?.merchantMetaData?.draftReference || '');
+                for (const hmacKeyId of hmacKeyIdCandidates) {
+                  // prepare headers/body for this hmacKeyId attempt
+                  const attemptHeaders = { ...headers } as Record<string, string>;
 
-                const combinedData = `Uid=${uid},KeyId=${hmacKeyId},Amount=${amountStr},FirstName=${firstName},LastName=${lastName},Phone=${phone},Email=${email},Street=,City=,State=,Country=,PostalCode=,TransactionId=${transactionId},Custom1=${custom1}`;
+                  if (secret && hmacKeyId) {
+                    const uid = uuidv4();
+                    const amountStr = String(payloadVariant?.amount ?? '');
+                    const fullName = String(payloadVariant?.customer?.name || '').trim();
+                    const names = fullName ? fullName.split(/\s+/) : [];
+                    const firstName = names.length > 0 ? names[0] : '';
+                    const lastName = names.length > 1 ? names.slice(1).join(' ') : '';
+                    const phone = String(payloadVariant?.customer?.phone || '');
+                    const email = String(payloadVariant?.customer?.email || '');
+                    const transactionId = String(payloadVariant?.orderId || payloadVariant?.orderNumber || '');
+                    const custom1 = String((payloadVariant?.metadata && (payloadVariant.metadata.draftReference || payloadVariant.metadata.draft_token)) || payloadVariant?.merchantMetaData?.draftReference || '');
 
-                try {
-                  const hmac = crypto.createHmac('sha256', secret).update(combinedData).digest('base64');
-                  // set Authorization header exactly as provider expects
-                  headers['Authorization'] = hmac;
-                } catch (e) {
-                  headers['Authorization'] = `Bearer ${secret}`;
+                    const combinedData = `Uid=${uid},KeyId=${hmacKeyId},Amount=${amountStr},FirstName=${firstName},LastName=${lastName},Phone=${phone},Email=${email},Street=,City=,State=,Country=,PostalCode=,TransactionId=${transactionId},Custom1=${custom1}`;
+
+                    try {
+                      const hmac = crypto.createHmac('sha256', secret).update(combinedData).digest('base64');
+                      attemptHeaders['Authorization'] = hmac;
+                    } catch (e) {
+                      attemptHeaders['Authorization'] = `Bearer ${secret}`;
+                    }
+
+                    attemptHeaders['x-api-key'] = secret;
+                    attemptHeaders['x-client-secret'] = secret;
+                    attemptHeaders['x-key-id'] = hmacKeyId;
+                    attemptHeaders['x-client-id'] = clientIdentifier;
+
+                    bodyToSend = {
+                      ...payloadVariant,
+                      Uid: uid,
+                      KeyId: hmacKeyId,
+                      TransactionId: transactionId,
+                      Custom1: custom1,
+                    };
+                  } else {
+                    // no secret: use headers/body as-is
+                    bodyToSend = payloadVariant;
+                  }
+
+                  const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: attemptHeaders,
+                    body: JSON.stringify(bodyToSend),
+                  });
+
+                  responseStatus = response.status;
+                  const responseText = await response.text();
+                  try {
+                    responseBody = responseText ? JSON.parse(responseText) : {};
+                  } catch {
+                    responseBody = { raw: responseText };
+                  }
+
+                  if (response.ok) {
+                    ok = true;
+                    break;
+                  }
+
+                  if (response.status === 404) {
+                    break;
+                  }
+
+                  if (response.status === 401 || response.status === 403) {
+                    break;
+                  }
+
+                  if (response.status === 400 || response.status === 422) {
+                    shouldStopExploring = true;
+                  }
                 }
 
-                // keep fallback secret headers for compatibility
-                headers['x-api-key'] = secret;
-                headers['x-client-secret'] = secret;
-                // ensure the key id headers are present and use the HMAC key id
-                headers['x-key-id'] = hmacKeyId;
-                headers['x-client-id'] = clientIdentifier;
-
-                bodyToSend = {
-                  ...payloadVariant,
-                  Uid: uid,
-                  KeyId: hmacKeyId,
-                  TransactionId: transactionId,
-                  Custom1: custom1,
-                };
+                if (ok) break;
+                if (shouldStopExploring) break;
               }
-
-              const response = await fetch(endpoint, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(bodyToSend),
-              });
-
-              responseStatus = response.status;
-              const responseText = await response.text();
-              try {
-                responseBody = responseText ? JSON.parse(responseText) : {};
-              } catch {
-                responseBody = { raw: responseText };
-              }
-
-              if (response.ok) {
-                ok = true;
-                break;
-              }
-
-              // 404 usually means wrong endpoint path; continue to the next endpoint candidate.
-              if (response.status === 404) {
-                break;
-              }
-
-              // 401/403 can indicate wrong secret; try next secret if available.
-              if (response.status === 401 || response.status === 403) {
-                break;
-              }
-
-              // 400/422 can be payload-shape mismatch; continue trying payload variants.
-              if (response.status === 400 || response.status === 422) {
-                shouldStopExploring = true;
-              }
-            }
 
             if (ok) break;
             if (shouldStopExploring) break;
