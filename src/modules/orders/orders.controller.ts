@@ -28,13 +28,6 @@ export class OrdersController {
   @Post('skipcash/session')
   @UseGuards(AuthGuard('jwt'))
   createSkipCashCheckoutSession(@Request() req: any, @Body() dto: CreateSkipCashCheckoutSessionDto) {
-    console.log('[CONTROLLER DEBUG] Received SkipCash session request');
-    console.log('[CONTROLLER DEBUG] DTO:', JSON.stringify({
-      customer: dto.customer,
-      itemCount: dto.items?.length || 0,
-      shippingAddress: dto.shippingAddress,
-    }, null, 2));
-    console.log('[CONTROLLER DEBUG] User ID:', req.user?._id);
     return this.ordersService.createSkipCashCheckoutSession(req.user._id, dto);
   }
 
