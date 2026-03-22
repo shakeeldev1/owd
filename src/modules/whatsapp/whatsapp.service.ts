@@ -88,22 +88,28 @@ export class WhatsAppService {
     if (!raw) return '';
 
     const defaultCode = this.extractDefaultCountryCode(fallbackPhone);
-    if (raw.startsWith('00')) {
-      return raw.slice(2).replace(/\D/g, '');
-    }
-
-    if (raw.startsWith('+')) {
-      return raw.replace(/\D/g, '');
-    }
-
-    const digitsOnly = raw.replace(/\D/g, '');
+    
+    // Remove all non-digit characters first
+    let digitsOnly = raw.replace(/\D/g, '');
     if (!digitsOnly) return '';
 
+    // If it starts with 00, remove it (international format)
+    if (raw.startsWith('00')) {
+      digitsOnly = digitsOnly.slice(2);
+    }
+
+    // If it's 7-8 digits (local Qatar number), prepend country code
     if (digitsOnly.length <= 8) {
       return `${defaultCode}${digitsOnly}`;
     }
 
-    return digitsOnly;
+    // If it starts with 974 (country code), use as-is
+    if (digitsOnly.startsWith('974')) {
+      return digitsOnly;
+    }
+
+    // Otherwise return the extracted digits (should be full international number)
+    return digitsOnly.slice(-8).length === 8 ? `${defaultCode}${digitsOnly.slice(-8)}` : digitsOnly;
   }
 
   private sanitizeMessage(message: string): string {
@@ -160,15 +166,21 @@ export class WhatsAppService {
 
     const formattedPhone = this.formatPhone(phone, runtime.whatsappNumber || this.defaultNumber);
     if (!this.isValidPhone(formattedPhone)) {
-      console.warn(`⚠️ WhatsApp message skipped: invalid phone ${phone}`);
+      console.warn(`⚠️ WhatsApp message skipped: invalid phone format`, {
+        originalPhone: phone,
+        formattedPhone,
+        fallback: runtime.whatsappNumber || this.defaultNumber,
+        isAdmin: phone?.toLowerCase() === 'admin'
+      });
       return false;
     }
 
     try {
-      const attemptSend = async (targetPhone: string) => {
+      const attemptSend = async (targetPhone: string, isAdmin: boolean = false) => {
         try {
           let resp = await this.postMessage(targetPhone, sanitizedMessage);
           if (!resp.ok && resp.status >= 500) {
+            console.warn(`⚠️ Server error from WhatsApp API, retrying...`, { status: resp.status });
             resp = await this.postMessage(targetPhone, sanitizedMessage);
           }
 
@@ -179,7 +191,12 @@ export class WhatsAppService {
               console.error('❌ WhatsApp provider account is inactive. Disabling sends temporarily for 15 minutes.');
               return false;
             }
-            console.error('❌ WhatsApp send failed:', { status: resp.status, phone: targetPhone, error: errText });
+            console.error('❌ WhatsApp HTTP error:', {
+              type: isAdmin ? 'admin' : 'customer',
+              phone: targetPhone,
+              status: resp.status,
+              error: errText.substring(0, 200)
+            });
             return false;
           }
 
@@ -194,30 +211,51 @@ export class WhatsAppService {
                 console.error('❌ WhatsApp provider account is inactive. Disabling sends temporarily for 15 minutes.');
                 return false;
               }
-              console.error('❌ WhatsApp provider rejected message:', data);
+              console.error('❌ WhatsApp provider rejected message:', {
+                type: isAdmin ? 'admin' : 'customer',
+                phone: targetPhone,
+                response: data
+              });
               return false;
             }
+            console.log(`✅ WhatsApp sent to ${isAdmin ? 'admin' : 'customer'}:`, targetPhone);
+          } else {
+            console.log(`✅ WhatsApp sent to ${isAdmin ? 'admin' : 'customer'}:`, targetPhone);
           }
-
-          console.log(`✅ WhatsApp sent to ${targetPhone}`);
           return true;
         } catch (err: any) {
-          console.error('❌ WhatsApp error:', err?.message || err);
+          console.error('❌ WhatsApp send error:', {
+            type: isAdmin ? 'admin' : 'customer',
+            phone: targetPhone,
+            error: err?.message || err?.toString()
+          });
           return false;
         }
       };
 
-      const primaryOk = await attemptSend(formattedPhone);
-
-      // Also send a copy to the admin/store WhatsApp number if different
+      // Send to customer phone
+      const primaryOk = await attemptSend(formattedPhone, false);
+      
+      // Also send to admin/store number if configured and different
       const adminRaw = runtime.whatsappNumber || this.defaultNumber;
       const adminFormatted = this.formatPhone(adminRaw, this.defaultNumber);
       let adminOk = false;
+      
       if (adminFormatted && this.isValidPhone(adminFormatted) && adminFormatted !== formattedPhone) {
-        adminOk = await attemptSend(adminFormatted);
+        console.log(`📱 Also notifying admin/store: ${adminFormatted}`);
+        adminOk = await attemptSend(adminFormatted, true);
       }
 
-      return primaryOk || adminOk;
+      // Log results
+      if (!primaryOk && !adminOk) {
+        console.warn('⚠️ WhatsApp message failed to send to both customer and admin');
+      } else if (!primaryOk) {
+        console.warn('⚠️ WhatsApp message sent to admin only, failed for customer');
+      } else if (!adminOk && adminFormatted !== formattedPhone) {
+        console.warn('⚠️ WhatsApp message sent to customer, failed for admin');
+      }
+
+      return primaryOk;
     } catch (error: any) {
       console.error('❌ WhatsApp error:', error?.message || error);
       return false;

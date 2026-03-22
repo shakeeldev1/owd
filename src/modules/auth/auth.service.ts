@@ -6,6 +6,7 @@ import * as bcrypt from 'bcryptjs';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { SignupDto, LoginDto, VerifyOtpDto, ChangePasswordDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
 import { MailService } from './mail.service';
+import { normalizePhone } from '../../utils/phone';
 
 @Injectable()
 export class AuthService {
@@ -37,11 +38,12 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(dto.password, 12);
     const otp = this.generateOtp();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const normalizedPhone = this.normalizePhone(dto.phone);
 
     const user = await this.userModel.create({
       fullName: dto.fullName,
       email,
-      phone: dto.phone,
+      phone: normalizedPhone,
       password: hashedPassword,
       otp,
       otpExpiry,

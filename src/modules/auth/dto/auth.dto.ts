@@ -11,7 +11,7 @@ export class SignupDto {
 
   @IsString()
   @IsNotEmpty()
-  @Matches(/^\+?[\d\s-]{8,}$/, { message: 'Invalid phone number' })
+  @Matches(/^(\+?974|00974)?[\s-]?\d{4}[\s-]?\d{4}$/, { message: 'Please enter a valid Qatar phone number (e.g., +974 5555 0000 or 5555 0000)' })
   phone: string;
 
   @IsString()

@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { User, UserDocument } from './schemas/user.schema';
 import { Recipient, RecipientDocument } from './schemas/recipient.schema';
 import { UpdateProfileDto, UpdateNotificationsDto } from '../auth/dto';
+import { normalizePhone } from '../../utils/phone';
 
 @Injectable()
 export class UsersService {
@@ -34,9 +35,16 @@ export class UsersService {
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const updateData: any = { ...dto };
+    
+    // Normalize phone if being updated
+    if (updateData.phone) {
+      updateData.phone = normalizePhone(updateData.phone);
+    }
+    
     const user = await this.userModel.findByIdAndUpdate(
       userId,
-      { $set: dto },
+      { $set: updateData },
       { returnDocument: 'after' },
     );
     if (!user) throw new NotFoundException('User not found');
