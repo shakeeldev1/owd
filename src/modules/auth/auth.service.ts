@@ -38,7 +38,7 @@ export class AuthService {
     const hashedPassword = await bcrypt.hash(dto.password, 12);
     const otp = this.generateOtp();
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-    const normalizedPhone = this.normalizePhone(dto.phone);
+    const normalizedPhone = normalizePhone(dto.phone);
 
     const user = await this.userModel.create({
       fullName: dto.fullName,
