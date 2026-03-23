@@ -192,8 +192,9 @@ export class InventoryService {
       { $group: { _id: null, value: { $sum: { $multiply: ['$price', '$stock'] } } } },
     ]);
 
-    const totalUnits = await this.productModel.aggregate([
-      { $group: { _id: null, units: { $sum: '$stock' } } },
+    // Get actual items SOLD (from sales field) instead of inventory units
+    const totalSold = await this.productModel.aggregate([
+      { $group: { _id: null, sold: { $sum: '$sales' } } },
     ]);
 
     const lowStockItems = await this.productModel
@@ -216,7 +217,7 @@ export class InventoryService {
       outOfStock,
       lowStock,
       totalStockValue: totalStockValue[0]?.value || 0,
-      totalUnits: totalUnits[0]?.units || 0,
+      totalUnits: totalSold[0]?.sold || 0, // Changed to show actual items sold
       lowStockItems,
       outOfStockItems,
     };

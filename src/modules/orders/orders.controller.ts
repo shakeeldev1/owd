@@ -79,6 +79,36 @@ export class OrdersController {
     return this.ordersService.submitFeedback(id, req.user._id, dto);
   }
 
+  // User: Submit delivery & product review
+  @Post(':id/review')
+  @UseGuards(AuthGuard('jwt'))
+  submitReview(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() dto: any, // SubmitReviewDto
+  ) {
+    return this.ordersService.submitReview(id, req.user._id, dto);
+  }
+
+  // Get order reviews (for admin)
+  @Get('reviews/pending')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin')
+  getPendingReviews(@Query('page') page?: number, @Query('limit') limit?: number) {
+    return this.ordersService.getPendingReviews({ page, limit });
+  }
+
+  // Approve/reject review (admin)
+  @Patch('reviews/:reviewId/approve')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin')
+  approveReview(
+    @Param('reviewId') reviewId: string,
+    @Body() dto: { isApproved: boolean; reason?: string },
+  ) {
+    return this.ordersService.approveReview(reviewId, dto.isApproved, dto.reason);
+  }
+
   // Staff: My assigned orders
   @Get('staff/assigned')
   @UseGuards(AuthGuard('jwt'), RolesGuard)

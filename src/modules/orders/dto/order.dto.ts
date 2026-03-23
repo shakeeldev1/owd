@@ -101,6 +101,14 @@ export class SubmitFeedbackDto {
   @IsString() @IsOptional() comment?: string;
 }
 
+export class SubmitReviewDto {
+  @IsNumber() @Min(1) @IsOptional() productRating?: number;
+  @IsNumber() @Min(1) @IsOptional() deliveryRating?: number;
+  @IsString() @IsOptional() productComment?: string;
+  @IsString() @IsOptional() deliveryComment?: string;
+  @IsArray() @IsOptional() images?: string[];
+}
+
 export class CreateSkipCashSessionDto {
   @IsString()
   @IsOptional()

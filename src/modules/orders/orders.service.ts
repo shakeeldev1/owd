@@ -6,6 +6,7 @@ import { Model, Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import CryptoJS from 'crypto-js';
 import { Order, OrderDocument } from './schemas/order.schema';
+import { Review, ReviewDocument } from './schemas/review.schema';
 import {
   CreateOrderDto,
   AdminCreateOrderDto,
@@ -28,6 +29,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 export class OrdersService implements OnModuleInit {
   constructor(
     @InjectModel(Order.name) private orderModel: Model<OrderDocument>,
+    @InjectModel(Review.name) private reviewModel: Model<ReviewDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
     @InjectModel(Cart.name) private cartModel: Model<CartDocument>,
@@ -1446,6 +1448,32 @@ export class OrdersService implements OnModuleInit {
       this.logWhatsAppFailure('admin status update alert', order.orderNumber);
     }
 
+    // Create admin notification for critical events
+    if (['delivered', 'cancelled', 'confirmed'].includes(dto.status)) {
+      let title = '';
+      let message = '';
+      
+      if (dto.status === 'delivered') {
+        title = `✓ Order Delivered: ${order.orderNumber}`;
+        message = `Order from ${customerName} has been successfully delivered. Now waiting for customer reviews.`;
+      } else if (dto.status === 'cancelled') {
+        title = `✗ Order Cancelled: ${order.orderNumber}`;
+        message = `Order from ${customerName} has been cancelled. Purpose: ${dto.notes || 'No reason specified'}`;
+      } else if (dto.status === 'confirmed') {
+        title = `✓ Order Confirmed: ${order.orderNumber}`;
+        message = `Order from ${customerName} (${updatedOrder.items?.length || 0} items, ${updatedOrder.total} QAR) is confirmed and ready for processing.`;
+      }
+
+      await this.notificationsService.notifyAdmins(title, message, 'order_update', {
+        orderId: id,
+        orderNumber: order.orderNumber,
+        status: dto.status,
+        customerName,
+        total: updatedOrder.total,
+        itemCount: updatedOrder.items?.length || 0,
+      });
+    }
+
     // Create user notification
     if (user) {
       await this.notificationsService.create({
@@ -1618,6 +1646,96 @@ export class OrdersService implements OnModuleInit {
     );
 
     return { message: 'Feedback submitted' };
+  }
+
+  // ─── Submit detailed review ───
+  async submitReview(orderId: string, userId: string, dto: any) {
+    const order = await this.orderModel.findOne({
+      _id: orderId,
+      user: new Types.ObjectId(userId),
+      status: 'delivered',
+    });
+    if (!order) throw new NotFoundException('Delivered order not found');
+
+    if (!this.reviewModel) throw new Error('Review model not initialized');
+
+    // Check if review already exists
+    const existingReview = await this.reviewModel.findOne({ order: orderId, user: userId });
+    if (existingReview) throw new BadRequestException('Review already submitted for this order');
+
+    // Create review
+    const review = await this.reviewModel.create({
+      user: new Types.ObjectId(userId),
+      order: new Types.ObjectId(orderId),
+      product: order.items?.[0]?.product || undefined,
+      productRating: dto.productRating || 0,
+      deliveryRating: dto.deliveryRating || 0,
+      productComment: dto.productComment || '',
+      deliveryComment: dto.deliveryComment || '',
+      images: dto.images || [],
+      isVerified: true,
+      submittedAt: new Date(),
+    });
+
+    // Notify admin of new review  
+    await this.notificationsService.notifyAdmins(
+      '⭐ New Review Submitted',
+      `Order ${order.orderNumber} - Product: ${dto.productRating}/5, Delivery: ${dto.deliveryRating}/5`,
+      'review',
+      { orderId, reviewId: review._id, productRating: dto.productRating, deliveryRating: dto.deliveryRating },
+    );
+
+    // Mark review request as sent
+    await this.orderModel.findByIdAndUpdate(orderId, {
+      reviewSubmitted: true,
+      reviewSubmittedAt: new Date(),
+    });
+
+    return { message: 'Review submitted successfully', review };
+  }
+
+  // Get pending reviews for admin approval
+  async getPendingReviews(query: { page?: number; limit?: number }) {
+    const { page = 1, limit = 20 } = query;
+    if (!this.reviewModel) throw new Error('Review model not initialized');
+
+    const filter = { isApproved: false };
+    const total = await this.reviewModel.countDocuments(filter);
+    const reviews = await this.reviewModel
+      .find(filter)
+      .populate('user', 'fullName email phone avatar')
+      .populate('order', 'orderNumber createdAt')
+      .populate('product', 'name image')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    return { reviews, total, page, totalPages: Math.ceil(total / limit) };
+  }
+
+  // Approve/reject review
+  async approveReview(reviewId: string, isApproved: boolean, reason?: string) {
+    if (!this.reviewModel) throw new Error('Review model not initialized');
+
+    const review = await this.reviewModel.findByIdAndUpdate(
+      reviewId,
+      { isApproved, approvedAt: isApproved ? new Date() : undefined },
+      { returnDocument: 'after' },
+    );
+
+    if (!review) throw new NotFoundException('Review not found');
+
+    // Notify user about review status
+    await this.notificationsService.create({
+      user: review.user.toString(),
+      title: isApproved ? 'Review Approved' : 'Review Rejected',
+      message: isApproved 
+        ? 'Your review has been approved and is now visible to other customers' 
+        : `Your review was not approved. Reason: ${reason || 'Violates community guidelines'}`,
+      type: 'review',
+    });
+
+    return { message: isApproved ? 'Review approved' : 'Review rejected', review };
   }
 
   async getTracking(orderId: string, requester: any) {

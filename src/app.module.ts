@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { CacheModule } from '@nestjs/cache-manager';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
@@ -29,6 +30,10 @@ import { SettingsModule } from './modules/settings/settings.module';
         uri: configService.get<string>('MONGODB_URI', 'mongodb://localhost:27017/alfursan-oud'),
       }),
       inject: [ConfigService],
+    }),
+    CacheModule.register({
+      isGlobal: true,
+      ttl: 60 * 1000, // 60 seconds default cache
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     WhatsAppModule,

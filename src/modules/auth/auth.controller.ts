@@ -1,4 +1,5 @@
-import { Controller, Post, Body, UseGuards, Get, Request, Patch } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Get, Request, Patch, UseInterceptors } from '@nestjs/common';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
 import { SignupDto, LoginDto, VerifyOtpDto, ResendOtpDto, ChangePasswordDto, UpdateProfileDto, UpdateNotificationsDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
@@ -42,6 +43,8 @@ export class AuthController {
   }
 
   @UseGuards(AuthGuard('jwt'))
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(60) // Cache for 60 seconds (user profile rarely changes)
   @Get('me')
   getProfile(@Request() req: any) {
     return this.usersService.getProfile(req.user._id);
