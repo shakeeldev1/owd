@@ -98,6 +98,19 @@ export class OrdersController {
     return this.ordersService.getPendingReviews({ page, limit });
   }
 
+  // Get all reviews with optional status filtering (admin)
+  @Get('reviews')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin')
+  getAllReviews(
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+    @Query('status') status?: 'pending' | 'approved',
+    @Query('search') search?: string,
+  ) {
+    return this.ordersService.getAllReviews({ page, limit, status, search });
+  }
+
   // Approve/reject review (admin)
   @Patch('reviews/:reviewId/approve')
   @UseGuards(AuthGuard('jwt'), RolesGuard)

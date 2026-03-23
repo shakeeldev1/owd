@@ -1713,6 +1713,41 @@ export class OrdersService implements OnModuleInit {
     return { reviews, total, page, totalPages: Math.ceil(total / limit) };
   }
 
+  // Get all reviews with optional status filtering
+  async getAllReviews(query: { page?: number; limit?: number; status?: 'pending' | 'approved'; search?: string }) {
+    const { page = 1, limit = 20, status, search } = query;
+    if (!this.reviewModel) throw new Error('Review model not initialized');
+
+    const filter: any = {};
+
+    // Filter by status
+    if (status === 'pending') {
+      filter.isApproved = false;
+    } else if (status === 'approved') {
+      filter.isApproved = true;
+    }
+
+    // Search by customer, product, or order number (if needed)
+    if (search) {
+      // This would require text index or regex search - implement if needed
+      // For now, basic filtering is provided
+    }
+
+    const total = await this.reviewModel.countDocuments(filter);
+    const reviews = await this.reviewModel
+      .find(filter)
+      .populate('user', 'name email phone')
+      .populate('order', 'orderNumber')
+      .populate('product', 'name image')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean() // Use lean() for faster queries
+      .exec();
+
+    return { reviews, total, page, totalPages: Math.ceil(total / limit) };
+  }
+
   // Approve/reject review
   async approveReview(reviewId: string, isApproved: boolean, reason?: string) {
     if (!this.reviewModel) throw new Error('Review model not initialized');
