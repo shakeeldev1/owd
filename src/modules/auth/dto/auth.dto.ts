@@ -11,7 +11,8 @@ export class SignupDto {
 
   @IsString()
   @IsNotEmpty()
-  @Matches(/^(\+?974|00974)?[\s-]?\d{4}[\s-]?\d{4}$/, { message: 'Please enter a valid Qatar phone number (e.g., +974 5555 0000 or 5555 0000)' })
+  // Accept international phone numbers (E.164-like) so +92... or +974... both work
+  @Matches(/^(\+?[1-9]\d{7,14})$/, { message: 'Please enter a valid phone number (include country code, e.g., +97455550000 or +923207521951)' })
   phone: string;
 
   @IsString()
