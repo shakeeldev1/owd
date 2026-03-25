@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import * as bcrypt from 'bcryptjs';
 import { User, UserDocument } from './schemas/user.schema';
 import { Recipient, RecipientDocument } from './schemas/recipient.schema';
 import { UpdateProfileDto, UpdateNotificationsDto } from '../auth/dto';
@@ -160,6 +162,51 @@ export class UsersService {
     const user = await this.userModel.findByIdAndDelete(id);
     if (!user) throw new NotFoundException('User not found');
     return { message: 'User deleted' };
+  }
+
+  async createUser(data: any) {
+    const email = String(data.email || '').trim().toLowerCase();
+    if (!email) throw new BadRequestException('Email is required');
+    const existing = await this.userModel.findOne({ email });
+    if (existing) throw new ConflictException('Email already registered');
+
+    const phone = String(data.phone || '').trim();
+    if (!phone) throw new BadRequestException('Phone is required');
+
+    // Normalize phone if util available
+    let normalizedPhone = phone;
+    try {
+      const { normalizePhone } = require('../../utils/phone');
+      normalizedPhone = normalizePhone(phone);
+    } catch (e) {
+      // fallback to raw
+    }
+
+    const plainPassword = data.password || Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
+    const hashed = await bcrypt.hash(plainPassword, 12);
+
+    const user = await this.userModel.create({
+      fullName: data.name || data.fullName || '',
+      email,
+      phone: normalizedPhone,
+      password: hashed,
+      role: data.role || 'user',
+      isVerified: true,
+      isActive: data.status !== 'inactive',
+    });
+
+    return {
+      message: 'User created',
+      user: {
+        id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        isActive: user.isActive,
+        password: plainPassword, // returned so admin can communicate initial password
+      },
+    };
   }
 
   async getStats() {

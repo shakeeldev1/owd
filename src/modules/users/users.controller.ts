@@ -38,6 +38,12 @@ export class UsersController {
     return this.usersService.adminUpdateUser(id, updateData);
   }
 
+  @Post()
+  @Roles('admin')
+  create(@Body() data: any) {
+    return this.usersService.createUser(data);
+  }
+
   @Patch(':id/toggle-status')
   @Roles('admin')
   toggleStatus(@Param('id') id: string) {
