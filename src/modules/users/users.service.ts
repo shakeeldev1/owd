@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { BadRequestException, ConflictException } from '@nestjs/common';
+import { MailService } from '../auth/mail.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
@@ -13,6 +14,7 @@ export class UsersService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Recipient.name) private recipientModel: Model<RecipientDocument>,
+    private mailService: MailService,
   ) {}
 
   async getProfile(userId: string) {
@@ -182,6 +184,7 @@ export class UsersService {
       // fallback to raw
     }
 
+    // Create with a random (hashed) password so account is not empty.
     const plainPassword = data.password || Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
     const hashed = await bcrypt.hash(plainPassword, 12);
 
@@ -195,8 +198,23 @@ export class UsersService {
       isActive: data.status !== 'inactive',
     });
 
+    // Generate a one-time OTP and send a password-reset/invitation email instead
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    user.otp = otp as any;
+    (user as any).otpExpiry = otpExpiry as any;
+    await user.save();
+
+    // Send invitation / reset email
+    try {
+      await this.mailService.sendPasswordResetEmail(user.email, otp, user.fullName || '');
+    } catch (e) {
+      // swallow email errors but log
+      console.error('Failed to send invitation email:', e?.message || e);
+    }
+
     return {
-      message: 'User created',
+      message: 'User created. An invitation to set a password has been sent to the user.',
       user: {
         id: user._id,
         fullName: user.fullName,
@@ -204,7 +222,6 @@ export class UsersService {
         phone: user.phone,
         role: user.role,
         isActive: user.isActive,
-        password: plainPassword, // returned so admin can communicate initial password
       },
     };
   }
