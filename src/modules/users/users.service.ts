@@ -142,6 +142,12 @@ export class UsersService {
   }
 
   async adminUpdateUser(id: string, updateData: any) {
+    // If admin is updating password, hash it before saving
+    if (updateData.password) {
+      const hashed = await bcrypt.hash(String(updateData.password), 12);
+      updateData.password = hashed;
+    }
+
     const user = await this.userModel.findByIdAndUpdate(id, { $set: updateData }, { returnDocument: 'after' });
     if (!user) throw new NotFoundException('User not found');
     return { message: 'User updated', user };
@@ -184,33 +190,42 @@ export class UsersService {
       // fallback to raw
     }
 
-    // Create with a random (hashed) password so account is not empty.
-    const plainPassword = data.password || Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
-    const hashed = await bcrypt.hash(plainPassword, 12);
+    // If admin provided a password, hash and set it; do NOT generate OTP invitation.
+    let passwordHash: string;
+    if (data.password) {
+      passwordHash = await bcrypt.hash(String(data.password), 12);
+    } else {
+      // Create with a random (hashed) password so account is not empty and invite via OTP
+      const plainPassword = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
+      passwordHash = await bcrypt.hash(plainPassword, 12);
+    }
 
     const user = await this.userModel.create({
       fullName: data.name || data.fullName || '',
       email,
       phone: normalizedPhone,
-      password: hashed,
+      password: passwordHash,
       role: data.role || 'user',
-      isVerified: true,
+      // If admin provided explicit password, mark verified. Otherwise keep existing behavior (invite via OTP)
+      isVerified: !!data.password,
       isActive: data.status !== 'inactive',
     });
 
-    // Generate a one-time OTP and send a password-reset/invitation email instead
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-    user.otp = otp as any;
-    (user as any).otpExpiry = otpExpiry as any;
-    await user.save();
+    // If no admin password provided, generate a one-time OTP and send a password-reset/invitation email
+    if (!data.password) {
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+      user.otp = otp as any;
+      (user as any).otpExpiry = otpExpiry as any;
+      await user.save();
 
-    // Send invitation / reset email
-    try {
-      await this.mailService.sendPasswordResetEmail(user.email, otp, user.fullName || '');
-    } catch (e) {
-      // swallow email errors but log
-      console.error('Failed to send invitation email:', e?.message || e);
+      // Send invitation / reset email
+      try {
+        await this.mailService.sendPasswordResetEmail(user.email, otp, user.fullName || '');
+      } catch (e) {
+        // swallow email errors but log
+        console.error('Failed to send invitation email:', e?.message || e);
+      }
     }
 
     return {
