@@ -1464,7 +1464,7 @@ export class OrdersService implements OnModuleInit {
         message = `Order from ${customerName} (${updatedOrder.items?.length || 0} items, ${updatedOrder.total} QAR) is confirmed and ready for processing.`;
       }
 
-      await this.notificationsService.notifyAdmins(title, message, 'order_update', {
+      await this.notificationsService.notifyAdmins(title, message, 'order', {
         orderId: id,
         orderNumber: order.orderNumber,
         status: dto.status,
@@ -1541,6 +1541,11 @@ export class OrdersService implements OnModuleInit {
     const order = await this.orderModel.findById(orderId);
     if (!order) throw new NotFoundException('Order not found');
 
+    // Validate deliveryStaffId to avoid Mongoose CastErrors
+    if (!dto?.deliveryStaffId || !Types.ObjectId.isValid(String(dto.deliveryStaffId))) {
+      throw new BadRequestException('Invalid delivery staff id');
+    }
+
     const staff = await this.userModel.findOne({
       _id: dto.deliveryStaffId,
       role: 'staff',
@@ -1566,38 +1571,46 @@ export class OrdersService implements OnModuleInit {
       { returnDocument: 'after' },
     );
 
-    // Notify delivery staff
-    const assignmentSent = await this.whatsAppService.sendDeliveryAssignment(
-      staff.phone,
-      staff.fullName,
-      order.orderNumber,
-      order.shippingAddress,
-    );
-    if (!assignmentSent) {
-      this.logWhatsAppFailure('delivery assignment', order.orderNumber);
+    // Notify delivery staff (guard external providers so failures don't return 500)
+    try {
+      const assignmentSent = await this.whatsAppService.sendDeliveryAssignment(
+        staff.phone,
+        staff.fullName,
+        order.orderNumber,
+        order.shippingAddress,
+      );
+      if (!assignmentSent) this.logWhatsAppFailure('delivery assignment', order.orderNumber);
+    } catch (err) {
+      console.warn('Error sending delivery assignment WhatsApp message', err?.message || err);
     }
 
     const customerPhone = order.customer?.phone || '';
     if (customerPhone) {
-      const customerAssignmentSent = await this.whatsAppService.sendCustomerCollectionNotice(
-        customerPhone,
-        this.safeCustomerName(order.customer?.name || ''),
-        order.orderNumber,
-        staff.fullName,
-        staff.phone || 'Support Team',
-      );
-      if (!customerAssignmentSent) {
-        this.logWhatsAppFailure('customer collection notice', order.orderNumber);
+      try {
+        const customerAssignmentSent = await this.whatsAppService.sendCustomerCollectionNotice(
+          customerPhone,
+          this.safeCustomerName(order.customer?.name || ''),
+          order.orderNumber,
+          staff.fullName,
+          staff.phone || 'Support Team',
+        );
+        if (!customerAssignmentSent) this.logWhatsAppFailure('customer collection notice', order.orderNumber);
+      } catch (err) {
+        console.warn('Error sending customer collection WhatsApp message', err?.message || err);
       }
     }
 
-    await this.notificationsService.create({
-      user: dto.deliveryStaffId,
-      title: 'New Delivery Assignment',
-      message: `Order ${order.orderNumber} has been assigned to you`,
-      type: 'delivery',
-      data: { orderId, orderNumber: order.orderNumber },
-    });
+    try {
+      await this.notificationsService.create({
+        user: dto.deliveryStaffId,
+        title: 'New Delivery Assignment',
+        message: `Order ${order.orderNumber} has been assigned to you`,
+        type: 'delivery',
+        data: { orderId, orderNumber: order.orderNumber },
+      });
+    } catch (err) {
+      console.warn('Error creating notification for delivery staff', err?.message || err);
+    }
 
     return { message: 'Delivery staff assigned', order: this.formatOrder(updatedOrder!) };
   }

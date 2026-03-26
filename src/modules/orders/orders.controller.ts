@@ -229,6 +229,10 @@ export class OrdersController {
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('admin')
   assignDelivery(@Param('id') id: string, @Body() dto: AssignDeliveryDto) {
+    // Debug: log incoming payload to help diagnose BadRequest (400)
+    try {
+      console.log('[AssignDelivery] incoming', { orderId: id, body: dto });
+    } catch (e) { /* ignore logging errors */ }
     return this.ordersService.assignDelivery(id, dto);
   }
 
