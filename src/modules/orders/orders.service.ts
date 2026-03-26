@@ -1019,6 +1019,11 @@ export class OrdersService implements OnModuleInit {
 
     let order: OrderDocument;
     try {
+      // Always add payment_paid to statusHistory if paymentStatus is paid
+      const statusHistory = [{ status: 'pending', timestamp: new Date(), note: 'Order placed' }];
+      if (paymentStatus === 'paid') {
+        statusHistory.push({ status: 'payment_paid', timestamp: new Date(), note: 'Payment confirmed' });
+      }
       order = await this.orderModel.create({
         orderNumber: this.generateOrderNumber(),
         user: new Types.ObjectId(userId),
@@ -1040,7 +1045,7 @@ export class OrdersService implements OnModuleInit {
         notes: dto.notes || '',
         loyaltyPointsEarned: loyaltyPoints,
         paymentCompletedAt: this.isPaidStatus(paymentStatus) ? new Date() : undefined,
-        statusHistory: [{ status: 'pending', timestamp: new Date(), note: 'Order placed' }],
+        statusHistory,
       });
     } catch (error: any) {
       if (this.isDuplicatePaymentIdError(error) && paymentMethod === 'skipcash' && dto.paymentId) {
@@ -1501,19 +1506,29 @@ export class OrdersService implements OnModuleInit {
     if (dto.paymentId) update.paymentId = dto.paymentId;
     if (dto.paymentStatus === 'paid') update.paymentCompletedAt = new Date();
 
+    // Always add payment_paid to statusHistory if paymentStatus transitions to paid and not already present
     const historyEntry = {
       status: `payment_${dto.paymentStatus}`,
       timestamp: new Date(),
       note: dto.notes || '',
       updatedBy,
     };
-
+    let updateQuery: any = {
+      $set: update,
+      $push: { statusHistory: historyEntry },
+    };
+    if (dto.paymentStatus === 'paid') {
+      // Check if payment_paid already exists in statusHistory
+      const alreadyPaid = order.statusHistory?.some((h: any) => h.status === 'payment_paid');
+      if (!alreadyPaid) {
+        updateQuery.$push = {
+          $each: [historyEntry, { status: 'payment_paid', timestamp: new Date(), note: 'Payment confirmed', updatedBy }],
+        };
+      }
+    }
     const updatedOrder = await this.orderModel.findByIdAndUpdate(
       id,
-      {
-        $set: update,
-        $push: { statusHistory: historyEntry },
-      },
+      updateQuery,
       { returnDocument: 'after' },
     );
 

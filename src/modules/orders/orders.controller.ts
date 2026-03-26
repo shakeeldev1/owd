@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request, Headers, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, Request, Headers, Delete, ForbiddenException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { OrdersService } from './orders.service';
 import {
@@ -144,7 +144,16 @@ export class OrdersController {
     @Param('id') id: string,
     @Body() dto: UpdateOrderStatusDto,
   ) {
-    return this.ordersService.updateStatus(id, dto, req.user.fullName || 'staff');
+    // Ensure the staff member is assigned to this order before allowing status updates
+    return (async () => {
+      const order = await this.ordersService.findById(id).catch(() => null);
+      if (!order) throw new ForbiddenException('Order not found or inaccessible');
+      const assignedStaffId = order.deliveryStaff && (order.deliveryStaff as any).id;
+      if (!assignedStaffId || String(assignedStaffId) !== String(req.user._id)) {
+        throw new ForbiddenException('You are not assigned to this order');
+      }
+      return this.ordersService.updateStatus(id, dto, req.user.fullName || 'staff');
+    })();
   }
 
   // Admin: All orders
@@ -165,7 +174,7 @@ export class OrdersController {
   // Admin: Stats
   @Get('stats')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
-  @Roles('admin')
+  @Roles('admin', 'staff')
   getStats() {
     return this.ordersService.getStats();
   }
