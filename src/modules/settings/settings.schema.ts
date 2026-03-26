@@ -77,7 +77,7 @@ export class Settings {
   @Prop({ default: true })
   whatsappEnabled: boolean;
 
-  @Prop({ default: '+97433689955' })
+  @Prop({ default: '97471378000' })
   whatsappNumber: string;
 
   @Prop({ 

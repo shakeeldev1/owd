@@ -22,7 +22,7 @@ export class WhatsAppService {
   private readonly maxMessageLength = 4096;
   private settingsCache: { whatsappEnabled: boolean; whatsappNumber: string; language: string } | null = null;
   private settingsCacheAt = 0;
-  private readonly settingsCacheTtlMs = 60000;
+  private readonly settingsCacheTtlMs = 5000; // Reduced from 60000 for faster updates
   private providerInactiveUntil = 0;
   private readonly providerInactiveCooldownMs = 15 * 60 * 1000;
 
@@ -34,10 +34,20 @@ export class WhatsAppService {
     this.apiUrl = this.normalizeApiUrl(configuredApiUrl);
     this.apiKey = this.configService.get('WHATSAPP_API_KEY', '');
     this.sender = this.configService.get('WHATSAPP_SENDER', '');
-    this.defaultNumber = this.configService.get('WHATSAPP_DEFAULT_NUMBER', '+97433689955');
+    this.defaultNumber = this.configService.get('WHATSAPP_DEFAULT_NUMBER', '97471378000');
     const envEnabled = this.configService.get<string>('WHATSAPP_ENABLED', 'true');
     this.enabled = envEnabled !== 'false' && !!(this.apiUrl && this.apiKey && this.sender);
     this.timeoutMs = Number(this.configService.get('WHATSAPP_TIMEOUT_MS', '12000'));
+    
+    // Clear cache on init
+    this.settingsCache = null;
+    this.settingsCacheAt = 0;
+    
+    console.log('✅ WhatsApp Service Initialized:', {
+      sender: this.sender,
+      defaultNumber: this.defaultNumber,
+      enabled: this.enabled,
+    });
   }
 
   private normalizeApiUrl(url: string): string {
@@ -61,24 +71,39 @@ export class WhatsAppService {
   private async getRuntimeSettings(): Promise<{ whatsappEnabled: boolean; whatsappNumber: string; language: string }> {
     const now = Date.now();
     if (this.settingsCache && now - this.settingsCacheAt < this.settingsCacheTtlMs) {
+      // Cache is still fresh, use it
       return this.settingsCache;
     }
 
     try {
       const settings = await this.settingsModel.findOne().select('whatsappEnabled whatsappNumber language').lean();
+      
+      const whatsappNumber = settings?.whatsappNumber || this.defaultNumber;
+      
       this.settingsCache = {
         whatsappEnabled: settings?.whatsappEnabled ?? true,
-        whatsappNumber: settings?.whatsappNumber || this.defaultNumber,
+        whatsappNumber,
         language: settings?.language || 'en',
       };
       this.settingsCacheAt = now;
+      
+      console.log('📱 WhatsApp Runtime Settings Loaded:', {
+        fromDB: !!settings?.whatsappNumber,
+        whatsappNumber,
+        whatsappEnabled: this.settingsCache.whatsappEnabled,
+        cached: false,
+      });
+      
       return this.settingsCache;
-    } catch {
-      return {
+    } catch (err) {
+      console.warn('⚠️ Error reading WhatsApp settings from DB, using defaults:', err?.message);
+      const fallback = {
         whatsappEnabled: true,
         whatsappNumber: this.defaultNumber,
         language: 'en',
       };
+      console.log('Using fallback:', fallback);
+      return fallback;
     }
   }
 
@@ -108,8 +133,13 @@ export class WhatsAppService {
       return digitsOnly;
     }
 
-    // Otherwise return the extracted digits (should be full international number)
-    return digitsOnly.slice(-8).length === 8 ? `${defaultCode}${digitsOnly.slice(-8)}` : digitsOnly;
+    // For other numbers with 9+ digits, take the last 8 digits and prepend country code
+    if (digitsOnly.length >= 9) {
+      return `${defaultCode}${digitsOnly.slice(-8)}`;
+    }
+
+    // Otherwise return as-is (full international number)
+    return digitsOnly;
   }
 
   private sanitizeMessage(message: string): string {
@@ -164,12 +194,21 @@ export class WhatsAppService {
       return false;
     }
 
-    const formattedPhone = this.formatPhone(phone, runtime.whatsappNumber || this.defaultNumber);
+    const fallbackPhone = runtime.whatsappNumber || this.defaultNumber;
+    console.log('📋 WhatsApp Send Preparation:', {
+      inputPhone: phone,
+      isAdmin: phone?.toLowerCase() === 'admin',
+      fallbackPhone,
+      runtimeWhatsappNumber: runtime.whatsappNumber,
+      envDefaultNumber: this.defaultNumber,
+    });
+    
+    const formattedPhone = this.formatPhone(phone, fallbackPhone);
     if (!this.isValidPhone(formattedPhone)) {
       console.warn(`⚠️ WhatsApp message skipped: invalid phone format`, {
         originalPhone: phone,
         formattedPhone,
-        fallback: runtime.whatsappNumber || this.defaultNumber,
+        fallback: fallbackPhone,
         isAdmin: phone?.toLowerCase() === 'admin'
       });
       return false;
@@ -240,6 +279,13 @@ export class WhatsAppService {
       const adminRaw = runtime.whatsappNumber || this.defaultNumber;
       const adminFormatted = this.formatPhone(adminRaw, this.defaultNumber);
       let adminOk = false;
+      
+      console.log('📱 Admin Notification Check:', {
+        adminRaw,
+        adminFormatted,
+        isDifferent: adminFormatted !== formattedPhone,
+        isValid: this.isValidPhone(adminFormatted),
+      });
       
       if (adminFormatted && this.isValidPhone(adminFormatted) && adminFormatted !== formattedPhone) {
         console.log(`📱 Also notifying admin/store: ${adminFormatted}`);
