@@ -188,7 +188,32 @@ export class MailService {
     await this.sendMail(to, `Order #${orderNumber} - ${status.charAt(0).toUpperCase() + status.slice(1)} - ${this.brandName}`, html);
   }
 
-  async sendFeedbackRequest(to: string, name: string, orderNumber: string, googleReviewLink: string): Promise<void> {
+  async sendFeedbackRequest(
+    to: string,
+    name: string,
+    orderNumber: string,
+    googleReviewLink: string,
+    orderId?: string,
+  ): Promise<void> {
+    const frontendUrl = this.configService.get('FRONTEND_URL', 'https://oudalzubarah.com');
+    const appReviewLink = orderId ? `${frontendUrl}/orders/${orderId}/review` : null;
+
+    const reviewButtonsHtml = appReviewLink
+      ? `
+        <div style="margin:24px 0;">
+          <p style="color:#64748b;line-height:1.6;margin-bottom:16px;text-align:center;">Choose where to leave your review:</p>
+          <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
+            <a href="${appReviewLink}" style="background:#BA974F;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;">Review in App 📱</a>
+            <a href="${googleReviewLink}" style="background:#4285f4;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;">Google Review 🌐</a>
+          </div>
+        </div>
+      `
+      : `
+        <div style="text-align:center;margin:32px 0;">
+          <a href="${googleReviewLink}" style="background:#BA974F;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;">Leave a Review ⭐</a>
+        </div>
+      `;
+
     const html = `
       <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
         <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
@@ -199,9 +224,7 @@ export class MailService {
           <h2 style="color:#1a1a2e;margin:0 0 16px;">Hello ${name},</h2>
           <p style="color:#64748b;line-height:1.6;">Thank you for your order <strong>#${orderNumber}</strong>!</p>
           <p style="color:#64748b;line-height:1.6;">We'd love to hear about your experience.</p>
-          <div style="text-align:center;margin:32px 0;">
-            <a href="${googleReviewLink}" style="background:#BA974F;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;">Leave a Review ⭐</a>
-          </div>
+          ${reviewButtonsHtml}
           <p style="color:#94a3b8;font-size:12px;text-align:center;">Your feedback helps us serve you better!</p>
         </div>
       </div>

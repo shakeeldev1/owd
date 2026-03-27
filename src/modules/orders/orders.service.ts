@@ -102,12 +102,14 @@ export class OrdersService implements OnModuleInit {
           order.customer.name,
           order.orderNumber,
           googleReviewLink,
+          order._id.toString(),
         );
         await this.whatsAppService.sendFeedbackRequest(
           order.customer.phone || '',
           order.customer.name || '',
           order.orderNumber,
           googleReviewLink,
+          order._id.toString(),
         );
 
         // mark that initial request was sent
@@ -135,12 +137,14 @@ export class OrdersService implements OnModuleInit {
           order.customer.name,
           order.orderNumber,
           googleReviewLink,
+          order._id.toString(),
         );
         await this.whatsAppService.sendFeedbackRequest(
           order.customer.phone || '',
           order.customer.name || '',
           order.orderNumber,
           googleReviewLink,
+          order._id.toString(),
         );
 
         order.reviewReminderScheduledAt = undefined as any;
@@ -1912,6 +1916,7 @@ export class OrdersService implements OnModuleInit {
         customerName,
         order.orderNumber,
         reviewLink,
+        order._id.toString(),
       );
     } else {
       sent = await this.whatsAppService.sendOrderProcessing(

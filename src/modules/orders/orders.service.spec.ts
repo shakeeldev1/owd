@@ -4,12 +4,14 @@ import { OrdersService } from './orders.service';
 describe('OrdersService reliability guards', () => {
   let service: OrdersService;
   let orderModel: any;
+  let reviewModel: any;
   let userModel: any;
   let productModel: any;
   let cartModel: any;
   let settingsModel: any;
   let configService: any;
   let whatsAppService: any;
+  let smsService: any;
   let mailService: any;
   let notificationsService: any;
 
@@ -20,6 +22,9 @@ describe('OrdersService reliability guards', () => {
       findOneAndUpdate: jest.fn(),
       findByIdAndUpdate: jest.fn(),
       findByIdAndDelete: jest.fn(),
+      create: jest.fn(),
+    };
+    reviewModel = {
       create: jest.fn(),
     };
     userModel = {
@@ -54,6 +59,11 @@ describe('OrdersService reliability guards', () => {
       sendOrderCancelled: jest.fn().mockResolvedValue(true),
       sendDeliveryAssignment: jest.fn().mockResolvedValue(true),
     };
+    smsService = {
+      sendSMS: jest.fn().mockResolvedValue(true),
+      sendOrderConfirmationSMS: jest.fn().mockResolvedValue(true),
+      sendOrderStatusUpdateSMS: jest.fn().mockResolvedValue(true),
+    };
     mailService = {
       sendPaymentReceipt: jest.fn().mockResolvedValue(undefined),
       sendFeedbackRequest: jest.fn().mockResolvedValue(undefined),
@@ -68,12 +78,14 @@ describe('OrdersService reliability guards', () => {
 
     service = new OrdersService(
       orderModel,
+      reviewModel,
       userModel,
       productModel,
       cartModel,
       settingsModel,
       configService,
       whatsAppService,
+      smsService,
       mailService,
       notificationsService,
     );

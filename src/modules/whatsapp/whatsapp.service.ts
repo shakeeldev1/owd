@@ -442,15 +442,33 @@ export class WhatsAppService {
     return this.sendMessage(phone, `⚠️ Low Stock Alert\n\nProduct: ${productName}\nRemaining: ${currentStock}`);
   }
 
-  async sendFeedbackRequest(phone: string, name: string, orderNumber: string, googleReviewLink: string, lang?: string): Promise<boolean> {
+  async sendFeedbackRequest(
+    phone: string,
+    name: string,
+    orderNumber: string,
+    googleReviewLink: string,
+    orderId?: string,
+    lang?: string,
+  ): Promise<boolean> {
     const runtime = await this.getRuntimeSettings();
     const L = lang || (runtime as any).language || 'en';
+    const frontendUrl = this.configService.get('FRONTEND_URL', 'https://oudalzubarah.com');
+    const appReviewLink = orderId ? `${frontendUrl}/orders/${orderId}/review` : null;
+
     if (L === 'ar') {
-      const msg = `كيف كانت تجربتك مع عود الزباره؟ 🌿\n\nرأيك يهمنا كثيرًا\n\n⭐⭐⭐⭐⭐\n\nشاركنا تقييمك من هنا:\n${googleReviewLink}\n\n🎁 ستحصل على عرض خاص بعد التقييم`;
+      let msg = `كيف كانت تجربتك مع عود الزباره؟ 🌿\n\nرأيك يهمنا كثيرًا\n\n⭐⭐⭐⭐⭐\n\n`;
+      if (appReviewLink) {
+        msg += `📱 شارك تقييمك في التطبيق:\n${appReviewLink}\n\n`;
+      }
+      msg += `🌐 أو شارك تقييمك من هنا:\n${googleReviewLink}\n\n🎁 ستحصل على عرض خاص بعد التقييم`;
       return this.sendMessage(phone, msg);
     }
 
-    const msg = `How was your experience with Oud Al Zubarah? 🌿\n\nYour feedback means a lot to us\n\n⭐⭐⭐⭐⭐\n\nLeave your review here:\n${googleReviewLink}\n\n🎁 You’ll receive a special offer after your review`;
+    let msg = `How was your experience with Oud Al Zubarah? 🌿\n\nYour feedback means a lot to us\n\n⭐⭐⭐⭐⭐\n\n`;
+    if (appReviewLink) {
+      msg += `📱 Share your review in the app:\n${appReviewLink}\n\n`;
+    }
+    msg += `🌐 Or leave your review here:\n${googleReviewLink}\n\n🎁 You'll receive a special offer after your review`;
     return this.sendMessage(phone, msg);
   }
 
