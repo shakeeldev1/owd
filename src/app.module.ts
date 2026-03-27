@@ -16,6 +16,7 @@ import { ContactModule } from './modules/contact/contact.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
+import { SMSModule } from './modules/sms/sms.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
@@ -37,6 +38,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     WhatsAppModule,
+    SMSModule,
     NotificationsModule,
     AuthModule,
     UsersModule,

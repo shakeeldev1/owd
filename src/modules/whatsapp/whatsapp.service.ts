@@ -30,14 +30,14 @@ export class WhatsAppService {
     private configService: ConfigService,
     @InjectModel(Settings.name) private settingsModel: Model<SettingsDocument>,
   ) {
-    const configuredApiUrl = this.configService.get('WHATSAPP_API_URL', 'https://custom1.waghl.com/send-message');
+    const configuredApiUrl = this.configService.get('MESSAGING_API_URL', 'https://custom1.waghl.com/send-message');
     this.apiUrl = this.normalizeApiUrl(configuredApiUrl);
-    this.apiKey = this.configService.get('WHATSAPP_API_KEY', '');
-    this.sender = this.configService.get('WHATSAPP_SENDER', '');
-    this.defaultNumber = this.configService.get('WHATSAPP_DEFAULT_NUMBER', '97471378000');
-    const envEnabled = this.configService.get<string>('WHATSAPP_ENABLED', 'true');
+    this.apiKey = this.configService.get('MESSAGING_API_KEY', '');
+    this.sender = this.configService.get('MESSAGING_SENDER', '');
+    this.defaultNumber = this.configService.get('MESSAGING_DEFAULT_NUMBER', '+923207521951');
+    const envEnabled = this.configService.get<string>('MESSAGING_ENABLED', 'true');
     this.enabled = envEnabled !== 'false' && !!(this.apiUrl && this.apiKey && this.sender);
-    this.timeoutMs = Number(this.configService.get('WHATSAPP_TIMEOUT_MS', '12000'));
+    this.timeoutMs = Number(this.configService.get('MESSAGING_TIMEOUT_MS', '12000'));
     
     // Clear cache on init
     this.settingsCache = null;

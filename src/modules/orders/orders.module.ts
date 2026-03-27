@@ -9,6 +9,7 @@ import { Product, ProductSchema } from '../products/schemas/product.schema';
 import { Cart, CartSchema } from '../cart/schemas/cart.schema';
 import { Settings, SettingsSchema } from '../settings/settings.schema';
 import { AuthModule } from '../auth/auth.module';
+import { SMSModule } from '../sms/sms.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { AuthModule } from '../auth/auth.module';
       { name: Settings.name, schema: SettingsSchema },
     ]),
     AuthModule,
+    SMSModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

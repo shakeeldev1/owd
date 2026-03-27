@@ -22,6 +22,7 @@ import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { Cart, CartDocument } from '../cart/schemas/cart.schema';
 import { Settings, SettingsDocument } from '../settings/settings.schema';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { SMSService } from '../sms/sms.service';
 import { MailService } from '../auth/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -36,6 +37,7 @@ export class OrdersService implements OnModuleInit {
     @InjectModel(Settings.name) private settingsModel: Model<SettingsDocument>,
     private configService: ConfigService,
     private whatsAppService: WhatsAppService,
+    private smsService: SMSService,
     private mailService: MailService,
     private notificationsService: NotificationsService,
   ) {}
@@ -1100,6 +1102,16 @@ export class OrdersService implements OnModuleInit {
       if (!confirmationSent) {
         this.logWhatsAppFailure('order confirmation', order.orderNumber);
       }
+
+      // Send SMS order confirmation
+      const smsConfirmationSent = await this.smsService.sendOrderConfirmationSMS(
+        customerPhone,
+        customerName,
+        order,
+      );
+      if (!smsConfirmationSent.success) {
+        console.warn('⚠️ SMS order confirmation failed:', smsConfirmationSent.error);
+      }
     }
 
     // Notify admins (include salesChannel metadata)
@@ -1357,6 +1369,17 @@ export class OrdersService implements OnModuleInit {
         {
           const statusSent = await this.whatsAppService.sendOrderProcessing(customerPhone, customerName, order.orderNumber);
           if (!statusSent) this.logWhatsAppFailure('processing', order.orderNumber);
+
+          // Send SMS status update
+          const smsSent = await this.smsService.sendOrderStatusUpdateSMS(
+            customerPhone,
+            customerName,
+            order,
+            dto.status,
+          );
+          if (!smsSent.success) {
+            console.warn('⚠️ SMS status update failed:', smsSent.error);
+          }
         }
         break;
       case 'shipped':
@@ -1368,12 +1391,34 @@ export class OrdersService implements OnModuleInit {
           dto.trackingNumber || order.trackingNumber || '',
         );
           if (!shippedSent) this.logWhatsAppFailure('shipped', order.orderNumber);
+
+          // Send SMS shipped notification
+          const smsSent = await this.smsService.sendOrderStatusUpdateSMS(
+            customerPhone,
+            customerName,
+            order,
+            'shipped',
+          );
+          if (!smsSent.success) {
+            console.warn('⚠️ SMS shipped notification failed:', smsSent.error);
+          }
         }
         break;
       case 'delivered':
         {
           const deliveredSent = await this.whatsAppService.sendOrderDelivered(customerPhone, customerName, order.orderNumber);
           if (!deliveredSent) this.logWhatsAppFailure('delivered', order.orderNumber);
+
+          // Send SMS delivered notification
+          const smsSent = await this.smsService.sendOrderStatusUpdateSMS(
+            customerPhone,
+            customerName,
+            order,
+            'delivered',
+          );
+          if (!smsSent.success) {
+            console.warn('⚠️ SMS delivered notification failed:', smsSent.error);
+          }
 
           // Ensure deliveredAt is set and schedule review/reminder
           try {

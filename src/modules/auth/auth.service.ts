@@ -6,6 +6,7 @@ import * as bcrypt from 'bcryptjs';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { SignupDto, LoginDto, VerifyOtpDto, ChangePasswordDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
 import { MailService } from './mail.service';
+import { SMSService } from '../sms/sms.service';
 import { normalizePhone } from '../../utils/phone';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class AuthService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private jwtService: JwtService,
     private mailService: MailService,
+    private smsService: SMSService,
   ) {}
 
   private generateOtp(): string {
@@ -85,6 +87,14 @@ export class AuthService {
     user.otp = null as any;
     user.otpExpiry = null as any;
     await user.save();
+
+    // Send welcome SMS
+    if (user.phone) {
+      const smsSent = await this.smsService.sendWelcomeSMS(user.phone, user.fullName);
+      if (!smsSent.success) {
+        console.warn('⚠️ Welcome SMS failed:', smsSent.error);
+      }
+    }
 
     return {
       message: 'Email verified successfully. You can now login.',
