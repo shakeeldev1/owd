@@ -25,6 +25,7 @@ import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { SMSService } from '../sms/sms.service';
 import { MailService } from '../auth/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { convertToGrams } from '../../utils/unitConversion';
 
 @Injectable()
 export class OrdersService implements OnModuleInit {
@@ -847,12 +848,17 @@ export class OrdersService implements OnModuleInit {
       if (!product) {
         throw new BadRequestException(`Product not found: ${item.name}`);
       }
+
+      const unit = (item as any).unit || (product as any).unit || 'Grams';
+      // Convert requested quantity to base inventory unit (Grams)
+      const requiredStockInGrams = convertToGrams(item.quantity, unit);
+
       if (product.stock <= 0) {
         throw new BadRequestException(`Product "${product.name}" is out of stock`);
       }
-      if (product.stock < item.quantity) {
+      if (product.stock < requiredStockInGrams) {
         throw new BadRequestException(
-          `Insufficient stock for "${product.name}". Available: ${product.stock}, Requested: ${item.quantity}`,
+          `Insufficient stock for "${product.name}". Available: ${product.stock} ${unit}, Requested: ${item.quantity} ${unit}`,
         );
       }
     }
@@ -924,29 +930,35 @@ export class OrdersService implements OnModuleInit {
   private async deductStock(items: any[]) {
     for (const item of items) {
       if (item.product) {
-        const product = await this.productModel.findByIdAndUpdate(
+        const product = await this.productModel.findById(item.product);
+        if (!product) continue;
+
+        const unit = (item as any).unit || (product as any).unit || 'Grams';
+        // Convert quantity to base inventory unit (Grams)
+        const stockToDeduct = convertToGrams(item.quantity, unit);
+
+        const updatedProduct = await this.productModel.findByIdAndUpdate(
           item.product,
           {
-            $inc: { stock: -item.quantity, sales: item.quantity },
+            $inc: { stock: -stockToDeduct, sales: item.quantity },
           },
           { returnDocument: 'after' },
         );
 
         // Check low stock using per-product threshold
-        if (product) {
-          const threshold = (product as any).lowStockThreshold || 10;
-          if (product.stock <= threshold && product.stock >= 0) {
-            const unit = (product as any).unit || 'units';
-            const alertMsg = `Product ${product.name} is almost out of stock. Remaining quantity: ${product.stock} ${unit.toLowerCase()}.`;
+        if (updatedProduct) {
+          const threshold = (updatedProduct as any).lowStockThreshold || 10;
+          if (updatedProduct.stock <= threshold && updatedProduct.stock >= 0) {
+            const alertMsg = `Product ${updatedProduct.name} is almost out of stock. Remaining quantity: ${updatedProduct.stock} Grams.`;
             await this.notificationsService.notifyAdmins(
               'Low Stock Alert',
               alertMsg,
               'stock',
             );
-            await this.whatsAppService.sendLowStockAlert('admin', product.name, product.stock);
+            await this.whatsAppService.sendLowStockAlert('admin', updatedProduct.name, updatedProduct.stock);
             // Send email alert
             try {
-              await this.mailService.sendLowStockAlert(product.name, product.stock, unit);
+              await this.mailService.sendLowStockAlert(updatedProduct.name, updatedProduct.stock, 'Grams');
             } catch (e) { /* email failure should not block */ }
           }
         }
@@ -958,8 +970,15 @@ export class OrdersService implements OnModuleInit {
   private async restoreStock(items: any[]) {
     for (const item of items) {
       if (item.product) {
+        const product = await this.productModel.findById(item.product);
+        if (!product) continue;
+
+        const unit = (item as any).unit || (product as any).unit || 'Grams';
+        // Convert quantity to base inventory unit (Grams)
+        const stockToRestore = convertToGrams(item.quantity, unit);
+
         await this.productModel.findByIdAndUpdate(item.product, {
-          $inc: { stock: item.quantity, sales: -item.quantity },
+          $inc: { stock: stockToRestore, sales: -item.quantity },
         });
       }
     }
@@ -972,6 +991,8 @@ export class OrdersService implements OnModuleInit {
     price: number;
     quantity: number;
     image?: string;
+    unit?: string;
+    pricePerUnit?: number;
   }>) {
     return items.map((item) => ({
       product: item.product ? new Types.ObjectId(item.product) : undefined,
@@ -980,6 +1001,8 @@ export class OrdersService implements OnModuleInit {
       price: item.price,
       quantity: item.quantity,
       image: item.image || '',
+      unit: item.unit || 'Grams',
+      pricePerUnit: item.pricePerUnit || 0,
     }));
   }
 

@@ -25,6 +25,8 @@ export class OrderItemDto {
   @IsNumber() price!: number;
   @IsNumber() @Min(1) quantity!: number;
   @IsString() @IsOptional() image?: string;
+  @IsString() @IsOptional() unit?: string;
+  @IsNumber() @IsOptional() pricePerUnit?: number;
 }
 
 export class OrderCustomerDto {

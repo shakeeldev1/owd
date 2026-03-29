@@ -22,6 +22,12 @@ export class OrderItem {
 
   @Prop({ default: '' })
   image!: string;
+
+  @Prop({ default: 'Grams', enum: ['Grams', 'Piece', 'Tola', 'ml', 'kg'] })
+  unit?: string;
+
+  @Prop({ default: 0 })
+  pricePerUnit?: number;
 }
 
 @Schema()

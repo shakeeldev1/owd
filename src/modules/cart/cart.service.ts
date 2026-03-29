@@ -4,6 +4,7 @@ import { Model, Types } from 'mongoose';
 import { Cart, CartDocument } from './schemas/cart.schema';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { AddToCartDto, UpdateCartItemDto } from './dto/cart.dto';
+import { convertToGrams } from '../../utils/unitConversion';
 
 @Injectable()
 export class CartService {
@@ -23,7 +24,13 @@ export class CartService {
 
   async getCart(userId: string) {
     const cart = await this.getOrCreateCart(userId);
-    const total = cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    // Calculate total with proper unit conversion
+    const total = cart.items.reduce((sum, item) => {
+      const unit = (item as any).unit || 'Grams';
+      // Price is already the correct unit price (pricePerTola if Tola unit)
+      // Just multiply by quantity
+      return sum + item.price * item.quantity;
+    }, 0);
     return {
       items: cart.items.map((item) => ({
         product: item.product,
@@ -34,6 +41,7 @@ export class CartService {
         quantity: item.quantity,
         image: item.image,
         slug: item.slug,
+        unit: (item as any).unit || 'Grams',
         subtotal: item.price * item.quantity,
       })),
       total,
@@ -50,6 +58,12 @@ export class CartService {
       (item) => item.product.toString() === dto.productId,
     );
 
+    // Determine the correct price based on unit
+    const unit = (product as any).unit || 'Grams';
+    const displayPrice = (unit === 'Tola' || unit === 'kg') && (product as any).pricePerTola 
+      ? (product as any).pricePerTola 
+      : product.price;
+
     if (existingIndex >= 0) {
       cart.items[existingIndex].quantity += dto.quantity;
     } else {
@@ -57,10 +71,12 @@ export class CartService {
         product: new Types.ObjectId(dto.productId),
         name: product.name,
         nameAr: product.nameAr,
-        price: product.price,
+        price: displayPrice,
         quantity: dto.quantity,
         image: product.image,
         slug: product.slug,
+        unit: unit,
+        pricePerUnit: product.price,
       } as any);
     }
 
