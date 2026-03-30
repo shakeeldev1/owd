@@ -37,6 +37,7 @@ export class ProductsService {
   async findAll(query: {
     search?: string;
     category?: string;
+    section?: string;
     status?: string;
     minPrice?: number;
     maxPrice?: number;
@@ -46,7 +47,7 @@ export class ProductsService {
     limit?: number;
     featured?: boolean;
   }) {
-    const { search, category, status, minPrice, maxPrice, sort, filter, page = 1, limit = 12, featured } = query;
+    const { search, category, section, status, minPrice, maxPrice, sort, filter, page = 1, limit = 12, featured } = query;
     const mongoFilter: any = {};
 
     if (search) {
@@ -70,6 +71,10 @@ export class ProductsService {
           ],
         },
       ];
+    }
+
+    if (section && section !== 'all') {
+      mongoFilter.section = section;
     }
 
     if (status) mongoFilter.status = status;
@@ -303,6 +308,7 @@ export class ProductsService {
       itemCode: (p as any).itemCode,
       category: p.category,
       categoryName: p.categoryName,
+      section: (p as any).section,
       rating: p.rating,
       reviews: p.reviews,
       productReviews: ((p as any).productReviews || []).map((review: any, index: number) => ({
@@ -350,6 +356,7 @@ export class ProductsService {
       itemCode: (p as any).itemCode,
       category: p.category,
       categoryName: p.categoryName,
+      section: (p as any).section,
       rating: p.rating,
       reviews: p.reviews,
       productReviews: (p as any).productReviews || [],

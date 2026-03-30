@@ -13,6 +13,7 @@ export class ProductsController {
   findAll(
     @Query('search') search?: string,
     @Query('category') category?: string,
+    @Query('section') section?: string,
     @Query('minPrice') minPrice?: number,
     @Query('maxPrice') maxPrice?: number,
     @Query('sort') sort?: string,
@@ -22,7 +23,7 @@ export class ProductsController {
     @Query('featured') featured?: boolean,
   ) {
     return this.productsService.findAll({
-      search, category, minPrice, maxPrice, sort, filter, page, limit, featured,
+      search, category, section, minPrice, maxPrice, sort, filter, page, limit, featured,
     });
   }
 

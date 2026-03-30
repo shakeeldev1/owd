@@ -21,6 +21,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { SectionsModule } from './modules/sections/sections.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     UsersModule,
     ProductsModule,
     CategoriesModule,
+    SectionsModule,
     OrdersModule,
     CartModule,
     OffersModule,
