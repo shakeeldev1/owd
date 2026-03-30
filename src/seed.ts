@@ -1,8 +1,9 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+require('dotenv').config();
 
-const MONGODB_URI = 'mongodb://localhost:27017/alfursan-oud';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/alfursan-oud';
 
 // Schemas (inline for standalone script)
 const UserSchema = new mongoose.Schema(
