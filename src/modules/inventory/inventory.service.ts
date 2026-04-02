@@ -230,25 +230,31 @@ export class InventoryService {
       .select('name nameAr sku itemCode stock price pricePerTola unit status categoryName sales lowStockThreshold image')
       .sort({ name: 1 });
 
-    const data = products.map((p) => ({
-      'Item Code': (p as any).itemCode ? String((p as any).itemCode) : '',
-      'English Name': String(p.name || ''),
-      'Arabic Name': String(p.nameAr || ''),
-      Unit: String((p as any).unit || 'Grams'),
-      'Available Quantity': Number(p.stock) || 0,
-      'Price per Unit': Number(p.price) || 0,
-      'Price per Tola/Piece': Number((p as any).pricePerTola) || 0,
-      'Image URL': String((p as any).image || ''),
-      SKU: String(p.sku || ''),
-      Category: String(p.categoryName || ''),
-      Status: String(p.status || ''),
-      Sales: Number((p as any).sales) || 0,
-      'Low Stock Threshold': Number((p as any).lowStockThreshold) || 10,
-    }));
-
     const columnOrder = ['Item Code', 'English Name', 'Arabic Name', 'Unit', 'Available Quantity', 'Price per Unit', 'Price per Tola/Piece', 'Image URL', 'SKU', 'Category', 'Status', 'Sales', 'Low Stock Threshold'];
+    
+    const rows: any[][] = [columnOrder]; // Header row
+
+    for (const p of products) {
+      const row = [
+        (p as any).itemCode ? String((p as any).itemCode) : '',
+        String(p.name || ''),
+        String(p.nameAr || ''),
+        String((p as any).unit || 'Grams'),
+        Number(p.stock) || 0,
+        Number(p.price) || 0,
+        Number((p as any).pricePerTola) || 0,
+        String((p as any).image || ''),
+        String(p.sku || ''),
+        String(p.categoryName || ''),
+        String(p.status || ''),
+        Number((p as any).sales) || 0,
+        Number((p as any).lowStockThreshold) || 10,
+      ];
+      rows.push(row);
+    }
+
     const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(data, { header: columnOrder, cellDates: false });
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
 
     // Set column widths for better readability
     worksheet['!cols'] = [

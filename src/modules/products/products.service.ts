@@ -163,38 +163,44 @@ export class ProductsService {
       .select('name nameAr sku itemCode stock price originalPrice weight unit pricePerTola lowStockThreshold image images description descriptionAr categoryName rating reviews sales badge badgeAr isNewArrival isBestseller isLimitedEdition isFeatured status')
       .sort({ name: 1 });
 
-    const data = products.map((p) => ({
-      'Item Code': String((p as any).itemCode || ''),
-      'SKU': String(p.sku || ''),
-      'English Name': String(p.name || ''),
-      'Arabic Name': String(p.nameAr || ''),
-      'Category': String(p.categoryName || ''),
-      'Price (QAR)': Number(p.price) || 0,
-      'Original Price (QAR)': Number((p as any).originalPrice) || 0,
-      'Unit': String((p as any).unit || 'Grams'),
-      'Weight (grams)': Number((p as any).weight) || 0,
-      'Price per Tola/Piece (QAR)': Number((p as any).pricePerTola) || 0,
-      'Stock Available': Number(p.stock) || 0,
-      'Low Stock Threshold': Number((p as any).lowStockThreshold) || 10,
-      'Total Sales': Number((p as any).sales) || 0,
-      'Rating': Number((p as any).rating) || 0,
-      'Total Reviews': Number((p as any).reviews) || 0,
-      'Main Image URL': String((p as any).image || ''),
-      'All Images (comma separated)': String(Array.isArray((p as any).images) ? (p as any).images.join('; ') : ''),
-      'English Badge': String((p as any).badge || ''),
-      'Arabic Badge': String((p as any).badgeAr || ''),
-      'New Arrival': ((p as any).isNewArrival ? 'Yes' : 'No'),
-      'Bestseller': ((p as any).isBestseller ? 'Yes' : 'No'),
-      'Limited Edition': ((p as any).isLimitedEdition ? 'Yes' : 'No'),
-      'Featured': ((p as any).isFeatured ? 'Yes' : 'No'),
-      'Status': String(p.status || 'active'),
-      'English Description': String((p as any).description || ''),
-      'Arabic Description': String((p as any).descriptionAr || ''),
-    }));
-
     const columnOrder = ['Item Code', 'SKU', 'English Name', 'Arabic Name', 'Category', 'Price (QAR)', 'Original Price (QAR)', 'Unit', 'Weight (grams)', 'Price per Tola/Piece (QAR)', 'Stock Available', 'Low Stock Threshold', 'Total Sales', 'Rating', 'Total Reviews', 'Main Image URL', 'All Images (comma separated)', 'English Badge', 'Arabic Badge', 'New Arrival', 'Bestseller', 'Limited Edition', 'Featured', 'Status', 'English Description', 'Arabic Description'];
+
+    const rows: any[][] = [columnOrder]; // Header row
+    
+    for (const p of products) {
+      const row = [
+        String((p as any).itemCode || ''),
+        String(p.sku || ''),
+        String(p.name || ''),
+        String(p.nameAr || ''),
+        String(p.categoryName || ''),
+        Number(p.price) || 0,
+        Number((p as any).originalPrice) || 0,
+        String((p as any).unit || 'Grams'),
+        Number((p as any).weight) || 0,
+        Number((p as any).pricePerTola) || 0,
+        Number(p.stock) || 0,
+        Number((p as any).lowStockThreshold) || 10,
+        Number((p as any).sales) || 0,
+        Number((p as any).rating) || 0,
+        Number((p as any).reviews) || 0,
+        String((p as any).image || ''),
+        String(Array.isArray((p as any).images) ? (p as any).images.join('; ') : ''),
+        String((p as any).badge || ''),
+        String((p as any).badgeAr || ''),
+        ((p as any).isNewArrival ? 'Yes' : 'No'),
+        ((p as any).isBestseller ? 'Yes' : 'No'),
+        ((p as any).isLimitedEdition ? 'Yes' : 'No'),
+        ((p as any).isFeatured ? 'Yes' : 'No'),
+        String(p.status || 'active'),
+        String((p as any).description || ''),
+        String((p as any).descriptionAr || ''),
+      ];
+      rows.push(row);
+    }
+
     const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(data, { header: columnOrder, cellDates: false });
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
 
     worksheet['!cols'] = [
       { wch: 15 },  // Item Code
