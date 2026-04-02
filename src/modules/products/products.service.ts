@@ -192,8 +192,9 @@ export class ProductsService {
       'Arabic Description': String((p as any).descriptionAr || ''),
     }));
 
+    const columnOrder = ['Item Code', 'SKU', 'English Name', 'Arabic Name', 'Category', 'Price (QAR)', 'Original Price (QAR)', 'Unit', 'Weight (grams)', 'Price per Tola/Piece (QAR)', 'Stock Available', 'Low Stock Threshold', 'Total Sales', 'Rating', 'Total Reviews', 'Main Image URL', 'All Images (comma separated)', 'English Badge', 'Arabic Badge', 'New Arrival', 'Bestseller', 'Limited Edition', 'Featured', 'Status', 'English Description', 'Arabic Description'];
     const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(data, { cellDates: false });
+    const worksheet = XLSX.utils.json_to_sheet(data, { header: columnOrder, cellDates: false });
 
     worksheet['!cols'] = [
       { wch: 15 },  // Item Code

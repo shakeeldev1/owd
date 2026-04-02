@@ -246,8 +246,9 @@ export class InventoryService {
       'Low Stock Threshold': Number((p as any).lowStockThreshold) || 10,
     }));
 
+    const columnOrder = ['Item Code', 'English Name', 'Arabic Name', 'Unit', 'Available Quantity', 'Price per Unit', 'Price per Tola/Piece', 'Image URL', 'SKU', 'Category', 'Status', 'Sales', 'Low Stock Threshold'];
     const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(data, { cellDates: false });
+    const worksheet = XLSX.utils.json_to_sheet(data, { header: columnOrder, cellDates: false });
 
     // Set column widths for better readability
     worksheet['!cols'] = [
