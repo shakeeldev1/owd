@@ -371,6 +371,14 @@ export class WhatsAppService {
 
   // Staff notifications
   async sendNewOrderAlert(phone: string, orderNumber: string, total: number): Promise<boolean> {
+    const runtime = await this.getRuntimeSettings();
+    const lang = (runtime as any).language || 'en';
+    
+    if (lang === 'ar') {
+      const msg = `🔔 طلب جديد\n\nرقم الطلب: *#${orderNumber}*\nالإجمالي: *${total} ريال قطري*\n\nيرجى التحقق من لوحة التحكم.`;
+      return this.sendMessage(phone, msg);
+    }
+    
     return this.sendMessage(phone,
       `🔔 *New Order!*\n\nOrder *#${orderNumber}* received.\nTotal: *${total} QAR*\n\nPlease check the admin panel.`
     );
@@ -383,13 +391,30 @@ export class WhatsAppService {
     customerPhone: string,
     status: string,
   ): Promise<boolean> {
+    const runtime = await this.getRuntimeSettings();
+    const lang = (runtime as any).language || 'en';
+    const timestamp = new Date().toLocaleString('en-US', { timeZone: 'Asia/Qatar' });
+    
+    if (lang === 'ar') {
+      const msg = `📢 تحديث حالة الطلب\n\nرقم الطلب: *#${orderNumber}*\nالعميل: ${customerName || 'غير محدد'}\nرقم الهاتف: ${customerPhone || 'غير محدد'}\nالحالة الجديدة: *${status}*\nالوقت: ${timestamp}`;
+      return this.sendMessage(phone, msg);
+    }
+    
     return this.sendMessage(
       phone,
-      `📢 *Order Status Updated*\n\nOrder: *#${orderNumber}*\nCustomer: ${customerName || 'N/A'}\nPhone: ${customerPhone || 'N/A'}\nNew Status: *${status}*\nUpdated: ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Qatar' })}`,
+      `📢 *Order Status Updated*\n\nOrder: *#${orderNumber}*\nCustomer: ${customerName || 'N/A'}\nPhone: ${customerPhone || 'N/A'}\nNew Status: *${status}*\nUpdated: ${timestamp}`,
     );
   }
 
   async sendDeliveryAssignment(phone: string, staffName: string, orderNumber: string, address: string): Promise<boolean> {
+    const runtime = await this.getRuntimeSettings();
+    const lang = (runtime as any).language || 'en';
+    
+    if (lang === 'ar') {
+      const msg = `📋 تم تعيينك لتوصيل جديد\n\nمرحبًا ${staffName},\nتم تعيينك لتوصيل الطلب *#${orderNumber}*.\nالعنوان: ${address}\n\nيرجى تحديث الحالة عند الانتهاء.`;
+      return this.sendMessage(phone, msg);
+    }
+    
     return this.sendMessage(phone,
       `📋 *New Delivery Assignment*\n\nHello ${staffName},\nOrder *#${orderNumber}* assigned to you.\nAddress: ${address}\n\nPlease update status when completed.`
     );
@@ -402,9 +427,17 @@ export class WhatsAppService {
     staffName: string,
     staffPhone: string,
   ): Promise<boolean> {
+    const runtime = await this.getRuntimeSettings();
+    const lang = (runtime as any).language || 'en';
+    
+    if (lang === 'ar') {
+      const msg = `🚚 نحن في الطريق إليك\n\nمرحبًا ${customerName},\nتم تعيين المندوب لتوصيل طلبك *#${orderNumber}*.\nاسم المندوب: ${staffName}\nرقم الهاتف: ${staffPhone || 'يرجى التواصل مع خدمة العملاء'}\n\nشكرًا لاختيارك عود الزباره 🌿`;
+      return this.sendMessage(phone, msg);
+    }
+    
     return this.sendMessage(
       phone,
-      `🚚 *We Are On The Way*\n\nHello ${customerName},\nYour order *#${orderNumber}* has been assigned for delivery.\nDelivery Staff: ${staffName}\nContact: ${staffPhone || 'Please contact support'}\n\nThank you for choosing Al Fursan Oud 🌿`,
+      `🚚 *We Are On The Way*\n\nHello ${customerName},\nYour order *#${orderNumber}* has been assigned for delivery.\nDelivery Staff: ${staffName}\nContact: ${staffPhone || 'Please contact support'}\n\nThank you for choosing Oud Al Zubarah 🌿`,
     );
   }
 

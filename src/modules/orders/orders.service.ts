@@ -1379,6 +1379,7 @@ export class OrdersService implements OnModuleInit {
     const customerName = this.safeCustomerName(order.customer?.name || user?.fullName || '');
 
     // ─── Automated notifications based on status ───
+    const userLanguage = (user as any)?.language || 'en';
     try {
       // Send status update email
       await this.mailService.sendOrderStatusUpdate(
@@ -1386,6 +1387,7 @@ export class OrdersService implements OnModuleInit {
         customerName,
         order.orderNumber,
         dto.status,
+        userLanguage,
       );
     } catch (e) { /* email failure should not block */ }
 

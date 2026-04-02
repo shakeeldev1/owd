@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Product, ProductDocument } from './schemas/product.schema';
 import { CreateProductDto, UpdateProductDto, AddProductReviewDto } from './dto/product.dto';
+import * as XLSX from 'xlsx';
 
 @Injectable()
 export class ProductsService {
@@ -154,6 +155,83 @@ export class ProductsService {
     const product = await this.productModel.findByIdAndDelete(id);
     if (!product) throw new NotFoundException('Product not found');
     return { message: 'Product deleted' };
+  }
+
+  async exportToExcel(res: any) {
+    const products = await this.productModel
+      .find({ status: 'active' })
+      .select('name nameAr sku itemCode stock price originalPrice weight unit pricePerTola lowStockThreshold image images description descriptionAr categoryName rating reviews sales badge badgeAr isNewArrival isBestseller isLimitedEdition isFeatured status')
+      .sort({ name: 1 });
+
+    const data = products.map((p) => ({
+      'Item Code': String((p as any).itemCode || ''),
+      'SKU': String(p.sku || ''),
+      'English Name': String(p.name || ''),
+      'Arabic Name': String(p.nameAr || ''),
+      'Category': String(p.categoryName || ''),
+      'Price (QAR)': Number(p.price) || 0,
+      'Original Price (QAR)': Number((p as any).originalPrice) || 0,
+      'Unit': String((p as any).unit || 'Grams'),
+      'Weight (grams)': Number((p as any).weight) || 0,
+      'Price per Tola/Piece (QAR)': Number((p as any).pricePerTola) || 0,
+      'Stock Available': Number(p.stock) || 0,
+      'Low Stock Threshold': Number((p as any).lowStockThreshold) || 10,
+      'Total Sales': Number((p as any).sales) || 0,
+      'Rating': Number((p as any).rating) || 0,
+      'Total Reviews': Number((p as any).reviews) || 0,
+      'Main Image URL': String((p as any).image || ''),
+      'All Images (comma separated)': String(Array.isArray((p as any).images) ? (p as any).images.join('; ') : ''),
+      'English Badge': String((p as any).badge || ''),
+      'Arabic Badge': String((p as any).badgeAr || ''),
+      'New Arrival': ((p as any).isNewArrival ? 'Yes' : 'No'),
+      'Bestseller': ((p as any).isBestseller ? 'Yes' : 'No'),
+      'Limited Edition': ((p as any).isLimitedEdition ? 'Yes' : 'No'),
+      'Featured': ((p as any).isFeatured ? 'Yes' : 'No'),
+      'Status': String(p.status || 'active'),
+      'English Description': String((p as any).description || ''),
+      'Arabic Description': String((p as any).descriptionAr || ''),
+    }));
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(data, { cellDates: false });
+
+    worksheet['!cols'] = [
+      { wch: 15 },  // Item Code
+      { wch: 15 },  // SKU
+      { wch: 28 },  // English Name
+      { wch: 28 },  // Arabic Name
+      { wch: 18 },  // Category
+      { wch: 14 },  // Price
+      { wch: 16 },  // Original Price
+      { wch: 12 },  // Unit
+      { wch: 14 },  // Weight
+      { wch: 18 },  // Price per Tola
+      { wch: 16 },  // Stock
+      { wch: 16 },  // Low Stock Threshold
+      { wch: 12 },  // Sales
+      { wch: 10 },  // Rating
+      { wch: 14 },  // Reviews
+      { wch: 50 },  // Main Image
+      { wch: 60 },  // All Images
+      { wch: 18 },  // Badge EN
+      { wch: 18 },  // Badge AR
+      { wch: 12 },  // New Arrival
+      { wch: 12 },  // Bestseller
+      { wch: 16 },  // Limited Edition
+      { wch: 12 },  // Featured
+      { wch: 12 },  // Status
+      { wch: 45 },  // English Description
+      { wch: 45 },  // Arabic Description
+    ];
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Products');
+
+    const buffer = Buffer.from(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', cellDates: false }));
+    const date = new Date().toISOString().split('T')[0];
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=products-export-${date}.xlsx`);
+    return res.send(buffer);
   }
 
   async getStats() {

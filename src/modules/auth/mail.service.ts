@@ -161,31 +161,60 @@ export class MailService {
     await this.sendMail(to, `Receipt #${orderNumber} - ${this.brandName}`, html);
   }
 
-  async sendOrderStatusUpdate(to: string, name: string, orderNumber: string, status: string): Promise<void> {
-    const statusMessages: Record<string, string> = {
-      processing: 'Your order is being prepared.',
-      shipped: 'Your order has been shipped and is on its way!',
-      delivered: 'Your order has been delivered. Enjoy!',
-      cancelled: 'Your order has been cancelled.',
-    };
+  async sendOrderStatusUpdate(to: string, name: string, orderNumber: string, status: string, language: string = 'en'): Promise<void> {
+    if (language === 'ar') {
+      const statusMessagesAr: Record<string, string> = {
+        processing: 'جاري تحضير طلبك بأعلى جودة.',
+        shipped: 'تم شحن طلبك وهو في الطريق إليك!',
+        delivered: 'تم تسليم طلبك بنجاح. استمتع بمنتجاتك!',
+        cancelled: 'تم إلغاء طلبك.',
+      };
 
-    const html = `
-      <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
-        <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
-          <h1 style="color:#BA974F;margin:0;font-size:24px;">${this.brandName}</h1>
-          <p style="color:#94a3b8;margin:8px 0 0;">Order Update</p>
-        </div>
-        <div style="padding:32px;">
-          <h2 style="color:#1a1a2e;margin:0 0 16px;">Hello ${name},</h2>
-          <p style="color:#64748b;line-height:1.6;">Order <strong>#${orderNumber}</strong> status update:</p>
-          <div style="background:#f8fafc;border-left:4px solid #BA974F;padding:16px;margin:24px 0;border-radius:0 8px 8px 0;">
-            <strong style="color:#1a1a2e;text-transform:capitalize;">${status}</strong>
-            <p style="color:#64748b;margin:8px 0 0;">${statusMessages[status] || 'Your order status has been updated.'}</p>
+      const html = `
+        <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;direction:rtl;text-align:right;">
+          <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
+            <h1 style="color:#BA974F;margin:0;font-size:24px;">${this.brandName}</h1>
+            <p style="color:#94a3b8;margin:8px 0 0;">تحديث الطلب</p>
+          </div>
+          <div style="padding:32px;">
+            <h2 style="color:#1a1a2e;margin:0 0 16px;">مرحبا ${name},</h2>
+            <p style="color:#64748b;line-height:1.6;">تحديث حالة الطلب <strong>#${orderNumber}</strong>:</p>
+            <div style="background:#f8fafc;border-right:4px solid #BA974F;padding:16px;margin:24px 0;border-radius:8px 0 0 8px;">
+              <strong style="color:#1a1a2e;text-transform:capitalize;">${status}</strong>
+              <p style="color:#64748b;margin:8px 0 0;">${statusMessagesAr[status] || 'تم تحديث حالة طلبك.'}</p>
+            </div>
+            <p style="color:#94a3b8;font-size:12px;margin-top:24px;">شكراً لاختيارك عود الزباره 🌿</p>
           </div>
         </div>
-      </div>
-    `;
-    await this.sendMail(to, `Order #${orderNumber} - ${status.charAt(0).toUpperCase() + status.slice(1)} - ${this.brandName}`, html);
+      `;
+      await this.sendMail(to, `الطلب #${orderNumber} - ${status} - ${this.brandName}`, html);
+    } else {
+      const statusMessages: Record<string, string> = {
+        processing: 'Your order is being prepared.',
+        shipped: 'Your order has been shipped and is on its way!',
+        delivered: 'Your order has been delivered. Enjoy!',
+        cancelled: 'Your order has been cancelled.',
+      };
+
+      const html = `
+        <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+          <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
+            <h1 style="color:#BA974F;margin:0;font-size:24px;">${this.brandName}</h1>
+            <p style="color:#94a3b8;margin:8px 0 0;">Order Update</p>
+          </div>
+          <div style="padding:32px;">
+            <h2 style="color:#1a1a2e;margin:0 0 16px;">Hello ${name},</h2>
+            <p style="color:#64748b;line-height:1.6;">Order <strong>#${orderNumber}</strong> status update:</p>
+            <div style="background:#f8fafc;border-left:4px solid #BA974F;padding:16px;margin:24px 0;border-radius:0 8px 8px 0;">
+              <strong style="color:#1a1a2e;text-transform:capitalize;">${status}</strong>
+              <p style="color:#64748b;margin:8px 0 0;">${statusMessages[status] || 'Your order status has been updated.'}</p>
+            </div>
+            <p style="color:#94a3b8;font-size:12px;margin-top:24px;">Thank you for choosing Oud Al Zubarah 🌿</p>
+          </div>
+        </div>
+      `;
+      await this.sendMail(to, `Order #${orderNumber} - ${status.charAt(0).toUpperCase() + status.slice(1)} - ${this.brandName}`, html);
+    }
   }
 
   async sendFeedbackRequest(

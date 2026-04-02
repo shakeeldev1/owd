@@ -231,30 +231,30 @@ export class InventoryService {
       .sort({ name: 1 });
 
     const data = products.map((p) => ({
-      'Item Code': (p as any).itemCode || '',
-      'English Name': p.name,
-      'Arabic Name': p.nameAr,
-      Unit: (p as any).unit || 'Grams',
-      'Available Quantity': p.stock,
-      'Price per Unit': p.price,
-      'Price per Tola/Piece': (p as any).pricePerTola || 0,
-      'Image URL': (p as any).image || '',
-      SKU: p.sku,
-      Category: p.categoryName,
-      Status: p.status,
-      Sales: p.sales,
-      'Low Stock Threshold': (p as any).lowStockThreshold || 10,
+      'Item Code': (p as any).itemCode ? String((p as any).itemCode) : '',
+      'English Name': String(p.name || ''),
+      'Arabic Name': String(p.nameAr || ''),
+      Unit: String((p as any).unit || 'Grams'),
+      'Available Quantity': Number(p.stock) || 0,
+      'Price per Unit': Number(p.price) || 0,
+      'Price per Tola/Piece': Number((p as any).pricePerTola) || 0,
+      'Image URL': String((p as any).image || ''),
+      SKU: String(p.sku || ''),
+      Category: String(p.categoryName || ''),
+      Status: String(p.status || ''),
+      Sales: Number((p as any).sales) || 0,
+      'Low Stock Threshold': Number((p as any).lowStockThreshold) || 10,
     }));
 
     const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(data);
+    const worksheet = XLSX.utils.json_to_sheet(data, { cellDates: false });
 
-    // Set column widths
+    // Set column widths for better readability
     worksheet['!cols'] = [
-      { wch: 12 }, // Item Code
+      { wch: 15 }, // Item Code
       { wch: 30 }, // English Name
       { wch: 30 }, // Arabic Name
-      { wch: 10 }, // Unit
+      { wch: 12 }, // Unit
       { wch: 18 }, // Quantity
       { wch: 14 }, // Price per Unit
       { wch: 18 }, // Price per Tola
@@ -266,9 +266,12 @@ export class InventoryService {
       { wch: 18 }, // Low Stock Threshold
     ];
 
+    // Set text direction for Arabic columns
+    worksheet['!rtl'] = true;
+
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventory');
 
-    return Buffer.from(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }));
+    return Buffer.from(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', cellDates: false }));
   }
 
   // Import inventory from Excel (matches client's actual file format)

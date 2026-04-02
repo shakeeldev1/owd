@@ -79,6 +79,9 @@ export class User {
     promotions: boolean;
     newsletter: boolean;
   };
+
+  @Prop({ enum: ['en', 'ar'], default: 'en' })
+  language!: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

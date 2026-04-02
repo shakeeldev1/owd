@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request, Res } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { ProductsService } from './products.service';
 import { CreateProductDto, UpdateProductDto, AddProductReviewDto } from './dto/product.dto';
@@ -64,6 +64,13 @@ export class ProductsController {
     @Query('limit') limit?: number,
   ) {
     return this.productsService.adminFindAll({ search, status, page, limit });
+  }
+
+  @Get('admin/export')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin', 'staff')
+  exportToExcel(@Res() res: any) {
+    return this.productsService.exportToExcel(res);
   }
 
   @Get(':id')
