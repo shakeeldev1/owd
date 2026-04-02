@@ -160,16 +160,15 @@ export class ProductsService {
   async exportToExcel(res: any) {
     const products = await this.productModel
       .find({ status: 'active' })
-      .select('name nameAr sku itemCode stock price originalPrice weight unit pricePerTola lowStockThreshold image images description descriptionAr categoryName rating reviews sales badge badgeAr isNewArrival isBestseller isLimitedEdition isFeatured status')
+      .select('name nameAr sku stock price originalPrice weight unit pricePerTola lowStockThreshold image images description descriptionAr categoryName rating reviews sales badge badgeAr isNewArrival isBestseller isLimitedEdition isFeatured status')
       .sort({ name: 1 });
 
-    const columnOrder = ['Item Code', 'SKU', 'English Name', 'Arabic Name', 'Category', 'Price (QAR)', 'Original Price (QAR)', 'Unit', 'Weight (grams)', 'Price per Tola/Piece (QAR)', 'Stock Available', 'Low Stock Threshold', 'Total Sales', 'Rating', 'Total Reviews', 'Main Image URL', 'All Images (comma separated)', 'English Badge', 'Arabic Badge', 'New Arrival', 'Bestseller', 'Limited Edition', 'Featured', 'Status', 'English Description', 'Arabic Description'];
+    const columnOrder = ['SKU', 'English Name', 'Arabic Name', 'Category', 'Price (QAR)', 'Original Price (QAR)', 'Unit', 'Weight (grams)', 'Price per Tola/Piece (QAR)', 'Stock Available', 'Low Stock Threshold', 'Total Sales', 'Rating', 'Total Reviews', 'Main Image URL', 'All Images (comma separated)', 'English Badge', 'Arabic Badge', 'New Arrival', 'Bestseller', 'Limited Edition', 'Featured', 'Status', 'English Description', 'Arabic Description'];
 
     const rows: any[][] = [columnOrder]; // Header row
     
     for (const p of products) {
       const row = [
-        String((p as any).itemCode || ''),
         String(p.sku || ''),
         String(p.name || ''),
         String(p.nameAr || ''),
@@ -203,7 +202,6 @@ export class ProductsService {
     const worksheet = XLSX.utils.aoa_to_sheet(rows);
 
     worksheet['!cols'] = [
-      { wch: 15 },  // Item Code
       { wch: 15 },  // SKU
       { wch: 28 },  // English Name
       { wch: 28 },  // Arabic Name
