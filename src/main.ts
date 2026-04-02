@@ -97,7 +97,7 @@ async function bootstrap() {
     optionsSuccessStatus: 204,
   });
 
-  // Global API prefix
+  // Global API prefix ...
   // app.setGlobalPrefix('api');
 
   // Static uploads folder
