@@ -1,19 +1,49 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Product, ProductDocument } from './schemas/product.schema';
 import { CreateProductDto, UpdateProductDto, AddProductReviewDto } from './dto/product.dto';
+import { Category, CategoryDocument } from '../categories/schemas/category.schema';
 import * as XLSX from 'xlsx';
 
 @Injectable()
 export class ProductsService {
-  constructor(@InjectModel(Product.name) private productModel: Model<ProductDocument>) {}
+  constructor(
+    @InjectModel(Product.name) private productModel: Model<ProductDocument>,
+    @InjectModel(Category.name) private categoryModel: Model<CategoryDocument>,
+  ) {}
 
   private generateSlug(name: string): string {
     return name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
+  }
+
+  /**
+   * Resolve categoryName from category ObjectId if needed
+   * Ensures categoryName is always populated for filtering by category
+   */
+  private async resolveCategoryName(category?: string, categoryName?: string): Promise<{ category?: string; categoryName?: string }> {
+    // If categoryName is already provided, use it as-is
+    if (categoryName) {
+      return { category, categoryName };
+    }
+
+    // If category ObjectId is provided, look up the category name
+    if (category && Types.ObjectId.isValid(category)) {
+      try {
+        const cat = await this.categoryModel.findById(category).select('name').lean();
+        if (cat) {
+          return { category, categoryName: cat.name };
+        }
+      } catch (e) {
+        // If lookup fails, return what we have
+      }
+    }
+
+    // Return the category and categoryName as provided
+    return { category, categoryName };
   }
 
   async create(dto: CreateProductDto) {
@@ -30,6 +60,11 @@ export class ProductsService {
       data.isNewArrival = dto.isNew;
       delete data.isNew;
     }
+
+    // Auto-populate categoryName from category ObjectId if needed
+    const { category, categoryName } = await this.resolveCategoryName(dto.category, dto.categoryName);
+    data.category = category;
+    data.categoryName = categoryName;
 
     const product = await this.productModel.create(data);
     return { message: 'Product created', product };
@@ -63,12 +98,16 @@ export class ProductsService {
       const normalizedCategory = String(category).trim();
       const spacedCategory = normalizedCategory.replace(/[-_]+/g, ' ');
 
+      // Try to match both by slug and by name format
       mongoFilter.$and = [
         ...(mongoFilter.$and || []),
         {
           $or: [
+            // Match against categoryName direct or slug-like format
             { categoryName: { $regex: normalizedCategory, $options: 'i' } },
             { categoryName: { $regex: spacedCategory, $options: 'i' } },
+            // Also try to match the slug pattern in the product's categoreName
+            { categoryName: { $regex: '^' + spacedCategory.split(' ').join('[\\s&-]*') + '$', $options: 'i' } },
           ],
         },
       ];
@@ -146,6 +185,16 @@ export class ProductsService {
       data.isNewArrival = (dto as any).isNew;
       delete data.isNew;
     }
+
+    // Auto-populate categoryName from category ObjectId if needed
+    const { category, categoryName } = await this.resolveCategoryName(dto.category, dto.categoryName);
+    if (dto.category !== undefined) {
+      data.category = category;
+    }
+    if (dto.categoryName !== undefined || (dto.category !== undefined && !dto.categoryName)) {
+      data.categoryName = categoryName;
+    }
+
     const product = await this.productModel.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after' });
     if (!product) throw new NotFoundException('Product not found');
     return { message: 'Product updated', product: this.formatAdminProduct(product) };
