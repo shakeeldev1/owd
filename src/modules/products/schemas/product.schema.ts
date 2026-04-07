@@ -79,6 +79,9 @@ export class Product {
   @Prop({ default: '' })
   categoryName: string;
 
+  @Prop({ default: '' })
+  section: string;
+
   @Prop({ default: 0 })
   rating: number;
 
@@ -123,4 +126,5 @@ export const ProductSchema = SchemaFactory.createForClass(Product);
 
 ProductSchema.index({ name: 'text', nameAr: 'text', description: 'text' });
 ProductSchema.index({ category: 1 });
+ProductSchema.index({ section: 1 });
 ProductSchema.index({ status: 1 });

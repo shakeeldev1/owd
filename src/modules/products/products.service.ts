@@ -84,6 +84,13 @@ export class ProductsService {
     featured?: boolean;
   }) {
     const { search, category, section, status, minPrice, maxPrice, sort, filter, page = 1, limit = 12, featured } = query;
+
+    const parsedPage = Math.max(1, Number(page) || 1);
+    const parsedLimit = Math.min(100, Math.max(1, Number(limit) || 12));
+    const parsedMinPrice = minPrice === undefined ? undefined : Number(minPrice);
+    const parsedMaxPrice = maxPrice === undefined ? undefined : Number(maxPrice);
+    const parsedFeatured = typeof featured === 'boolean' ? featured : String(featured).toLowerCase() === 'true';
+
     const mongoFilter: any = {};
 
     if (search) {
@@ -98,30 +105,60 @@ export class ProductsService {
       const normalizedCategory = String(category).trim();
       const spacedCategory = normalizedCategory.replace(/[-_]+/g, ' ');
 
-      // Try to match both by slug and by name format
+      // Prefer filtering by the stored category ObjectId when possible.
+      // This keeps shop results consistent with category product counts.
+      let resolvedCategoryId: Types.ObjectId | undefined;
+
+      if (Types.ObjectId.isValid(normalizedCategory)) {
+        resolvedCategoryId = new Types.ObjectId(normalizedCategory);
+      } else {
+        // Attempt to resolve a slug (preferred) or a name to an ObjectId.
+        const categoryDoc = await this.categoryModel
+          .findOne({
+            $or: [
+              { slug: normalizedCategory.toLowerCase() },
+              { name: { $regex: '^' + spacedCategory + '$', $options: 'i' } },
+              { nameAr: { $regex: '^' + spacedCategory + '$', $options: 'i' } },
+            ],
+          })
+          .select('_id')
+          .lean();
+
+        if (categoryDoc?._id) {
+          resolvedCategoryId = new Types.ObjectId(String(categoryDoc._id));
+        }
+      }
+
+      const categoryNameMatchers = [
+        { categoryName: { $regex: normalizedCategory, $options: 'i' } },
+        { categoryName: { $regex: spacedCategory, $options: 'i' } },
+        { categoryName: { $regex: '^' + spacedCategory.split(' ').join('[\\s&-]*') + '$', $options: 'i' } },
+      ];
+
       mongoFilter.$and = [
         ...(mongoFilter.$and || []),
         {
           $or: [
-            // Match against categoryName direct or slug-like format
-            { categoryName: { $regex: normalizedCategory, $options: 'i' } },
-            { categoryName: { $regex: spacedCategory, $options: 'i' } },
-            // Also try to match the slug pattern in the product's categoreName
-            { categoryName: { $regex: '^' + spacedCategory.split(' ').join('[\\s&-]*') + '$', $options: 'i' } },
+            ...(resolvedCategoryId ? [{ category: resolvedCategoryId }] : []),
+            ...categoryNameMatchers,
           ],
         },
       ];
     }
 
     if (section && section !== 'all') {
-      mongoFilter.section = section;
+      mongoFilter.section = String(section).trim();
     }
 
     if (status) mongoFilter.status = status;
     else mongoFilter.status = 'active'; // Default to active for public
 
-    if (minPrice !== undefined) mongoFilter.price = { ...mongoFilter.price, $gte: minPrice };
-    if (maxPrice !== undefined && maxPrice !== Infinity) mongoFilter.price = { ...mongoFilter.price, $lte: maxPrice };
+    if (parsedMinPrice !== undefined && !Number.isNaN(parsedMinPrice)) {
+      mongoFilter.price = { ...mongoFilter.price, $gte: parsedMinPrice };
+    }
+    if (parsedMaxPrice !== undefined && !Number.isNaN(parsedMaxPrice) && parsedMaxPrice !== Infinity) {
+      mongoFilter.price = { ...mongoFilter.price, $lte: parsedMaxPrice };
+    }
 
     if (filter === 'new') {
       mongoFilter.$and = [
@@ -137,7 +174,19 @@ export class ProductsService {
     if (filter === 'bestseller') mongoFilter.isBestseller = true;
     if (filter === 'limited') mongoFilter.isLimitedEdition = true;
 
-    if (featured) mongoFilter.isFeatured = true;
+    if (filter === 'sale') {
+      mongoFilter.$and = [
+        ...(mongoFilter.$and || []),
+        {
+          originalPrice: { $exists: true, $gt: 0 },
+        },
+        {
+          $expr: { $gt: ['$originalPrice', '$price'] },
+        },
+      ];
+    }
+
+    if (parsedFeatured) mongoFilter.isFeatured = true;
 
     let sortOption: any = { createdAt: -1 };
     if (sort === 'price-low') sortOption = { price: 1 };
@@ -150,14 +199,14 @@ export class ProductsService {
     const products = await this.productModel
       .find(mongoFilter)
       .sort(sortOption)
-      .skip((page - 1) * limit)
-      .limit(limit);
+      .skip((parsedPage - 1) * parsedLimit)
+      .limit(parsedLimit);
 
     return {
       products: products.map((p) => this.formatPublicProduct(p)),
       total,
-      page,
-      totalPages: Math.ceil(total / limit),
+      page: parsedPage,
+      totalPages: Math.ceil(total / parsedLimit),
     };
   }
 

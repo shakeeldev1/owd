@@ -49,7 +49,7 @@ export class CategoriesService {
     const productImagesByCategoryId = new Map<string, string>();
 
     const products = await this.productModel
-      .find({ status: { $ne: 'archived' } })
+      .find({ status: 'active' })
       .select('_id category categoryName image')
       .lean();
 
