@@ -32,6 +32,7 @@ async function bootstrap() {
   > = {
     'oud': { name: 'Oud Section', nameAr: 'قسم العود', description: 'Pure oud products' },
     'dehn-al-oud': { name: 'Dehn Al Oud', nameAr: 'دهن العود', description: 'Concentrated oud oils / traditional oud oil' },
+    'musk': { name: 'Musk', nameAr: 'المسك', description: 'Premium musk and musk-based products' },
     'perfumes-sprays': { name: 'Perfumes & Sprays', nameAr: 'العطور والسبراي', description: 'Regular perfumes and body sprays' },
     'bakhoor': { name: 'Bakhoor', nameAr: 'بخور', description: 'All types of incense / bakhoor products' },
     'incense-burners-lighters': { name: 'Incense Burners & Lighters', nameAr: 'مباخر وولاعات', description: 'Mabkhar, burners and lighters' },
@@ -52,7 +53,7 @@ async function bootstrap() {
     'malaysian-oud': 'oud',
     'malino-collection': 'oud',
     'moroki-collection': 'oud',
-    'musk-collection': 'oud',
+    'musk-collection': 'musk',
     'premium-blends': 'oud',
     'pure-oud-oil': 'dehn-al-oud',
     'signature-blends': 'oud',
@@ -70,6 +71,7 @@ async function bootstrap() {
 
     // Keyword-based heuristics
     if (/pure|dehn|oil/.test(slug) || /pure|dehn|oil/.test(name)) return 'dehn-al-oud';
+    if (/musk|kamar/.test(slug) || /musk|kamar/.test(name)) return 'musk';
     if (/perfume|spray|parfum/.test(slug) || /perfume|spray|parfum/.test(name)) return 'perfumes-sprays';
     if (/incense|bakhoor|bakhour|incense-wood/.test(slug) || /incense|bakhoor|bakhour/.test(name)) {
       // incense burners are separate

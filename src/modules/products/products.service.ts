@@ -129,21 +129,16 @@ export class ProductsService {
         }
       }
 
-      const categoryNameMatchers = [
-        { categoryName: { $regex: normalizedCategory, $options: 'i' } },
-        { categoryName: { $regex: spacedCategory, $options: 'i' } },
-        { categoryName: { $regex: '^' + spacedCategory.split(' ').join('[\\s&-]*') + '$', $options: 'i' } },
-      ];
-
-      mongoFilter.$and = [
-        ...(mongoFilter.$and || []),
-        {
-          $or: [
-            ...(resolvedCategoryId ? [{ category: resolvedCategoryId }] : []),
-            ...categoryNameMatchers,
-          ],
-        },
-      ];
+      // Only filter by resolved category ObjectId to ensure strict category separation.
+      // Remove substring regex matching on categoryName to prevent cross-category matches
+      // (e.g., filtering "oud" should not match "Dehn Al Oud" or "Oud Oil").
+      if (resolvedCategoryId) {
+        mongoFilter.category = resolvedCategoryId;
+      } else {
+        // If we couldn't resolve the category, don't return results
+        // This prevents incorrect cross-category matches from substring matching
+        mongoFilter.category = { $eq: null };
+      }
     }
 
     if (section && section !== 'all') {
