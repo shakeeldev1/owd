@@ -38,6 +38,9 @@ export class CreateProductDto {
   pricePerTola?: number;
 
   @IsNumber() @IsOptional()
+  pricePerPiece?: number;
+
+  @IsNumber() @IsOptional()
   lowStockThreshold?: number;
 
   @IsString() @IsOptional()

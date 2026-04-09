@@ -70,6 +70,9 @@ export class Product {
   @Prop({ default: 0 })
   pricePerTola: number;
 
+  @Prop({ default: 0 })
+  pricePerPiece: number;
+
   @Prop({ default: 10 })
   lowStockThreshold: number;
 

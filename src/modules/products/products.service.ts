@@ -253,7 +253,7 @@ export class ProductsService {
   async exportToExcel(res: any) {
     const products = await this.productModel
       .find({ status: 'active' })
-      .select('name nameAr sku stock price originalPrice weight unit pricePerTola lowStockThreshold image images description descriptionAr categoryName rating reviews sales badge badgeAr isNewArrival isBestseller isLimitedEdition isFeatured status')
+      .select('name nameAr sku stock price originalPrice weight unit pricePerTola pricePerPiece lowStockThreshold image images description descriptionAr categoryName rating reviews sales badge badgeAr isNewArrival isBestseller isLimitedEdition isFeatured status')
       .sort({ name: 1 });
 
     const columnOrder = ['SKU', 'English Name', 'Arabic Name', 'Category', 'Price (QAR)', 'Original Price (QAR)', 'Unit', 'Weight (grams)', 'Price per Tola/Piece (QAR)', 'Stock Available', 'Low Stock Threshold', 'Total Sales', 'Rating', 'Total Reviews', 'Main Image URL', 'All Images (comma separated)', 'English Badge', 'Arabic Badge', 'New Arrival', 'Bestseller', 'Limited Edition', 'Featured', 'Status', 'English Description', 'Arabic Description'];
@@ -261,6 +261,15 @@ export class ProductsService {
     const rows: any[][] = [columnOrder]; // Header row
     
     for (const p of products) {
+      // Use pricePerPiece for Piece units, pricePerTola for Tola/kg units, otherwise use price
+      const unit = (p as any).unit || 'Grams';
+      let tierPrice = 0;
+      if (unit === 'Piece' && (p as any).pricePerPiece) {
+        tierPrice = (p as any).pricePerPiece;
+      } else if ((unit === 'Tola' || unit === 'kg') && (p as any).pricePerTola) {
+        tierPrice = (p as any).pricePerTola;
+      }
+      
       const row = [
         String(p.sku || ''),
         String(p.name || ''),
@@ -268,9 +277,9 @@ export class ProductsService {
         String(p.categoryName || ''),
         Number(p.price) || 0,
         Number((p as any).originalPrice) || 0,
-        String((p as any).unit || 'Grams'),
+        String(unit),
         Number((p as any).weight) || 0,
-        Number((p as any).pricePerTola) || 0,
+        Number(tierPrice) || 0,
         Number(p.stock) || 0,
         Number((p as any).lowStockThreshold) || 10,
         Number((p as any).sales) || 0,

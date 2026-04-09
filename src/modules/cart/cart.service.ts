@@ -62,6 +62,8 @@ export class CartService {
     const unit = (product as any).unit || 'Grams';
     const displayPrice = (unit === 'Tola' || unit === 'kg') && (product as any).pricePerTola 
       ? (product as any).pricePerTola 
+      : unit === 'Piece' && (product as any).pricePerPiece
+      ? (product as any).pricePerPiece
       : product.price;
 
     if (existingIndex >= 0) {

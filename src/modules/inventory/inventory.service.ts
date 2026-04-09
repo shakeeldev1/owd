@@ -87,7 +87,7 @@ export class InventoryService {
     const total = await this.productModel.countDocuments(filter);
     const products = await this.productModel
       .find(filter)
-      .select('name nameAr sku itemCode stock price pricePerTola unit status image sales category categoryName lowStockThreshold')
+      .select('name nameAr sku itemCode stock price pricePerTola pricePerPiece unit status image sales category categoryName lowStockThreshold')
       .sort({ stock: 1 })
       .skip((page - 1) * limit)
       .limit(limit);
@@ -103,6 +103,7 @@ export class InventoryService {
         stock: p.stock,
         price: p.price,
         pricePerTola: (p as any).pricePerTola,
+        pricePerPiece: (p as any).pricePerPiece,
         unit: (p as any).unit,
         status: p.status,
         image: p.image,
@@ -227,7 +228,7 @@ export class InventoryService {
   async exportToExcel(): Promise<Buffer> {
     const products = await this.productModel
       .find()
-      .select('name nameAr sku stock price pricePerTola unit status categoryName sales lowStockThreshold image')
+      .select('name nameAr sku stock price pricePerTola pricePerPiece unit status categoryName sales lowStockThreshold image')
       .sort({ name: 1 });
 
     const columnOrder = ['SKU', 'English Name', 'Arabic Name', 'Unit', 'Available Quantity', 'Price per Unit', 'Price per Tola/Piece', 'Category', 'Status', 'Sales', 'Low Stock Threshold', 'Image URL'];
@@ -235,14 +236,23 @@ export class InventoryService {
     const rows: any[][] = [columnOrder]; // Header row
 
     for (const p of products) {
+      const unit = (p as any).unit || 'Grams';
+      // Use pricePerPiece for Piece units, pricePerTola for Tola/kg units
+      let tierPrice = 0;
+      if (unit === 'Piece' && (p as any).pricePerPiece) {
+        tierPrice = (p as any).pricePerPiece;
+      } else if ((unit === 'Tola' || unit === 'kg') && (p as any).pricePerTola) {
+        tierPrice = (p as any).pricePerTola;
+      }
+      
       const row = [
         String(p.sku || ''),
         String(p.name || ''),
         String(p.nameAr || ''),
-        String((p as any).unit || 'Grams'),
+        String(unit),
         Number(p.stock) || 0,
         Number(p.price) || 0,
-        Number((p as any).pricePerTola) || 0,
+        Number(tierPrice) || 0,
         String(p.categoryName || ''),
         String(p.status || ''),
         Number((p as any).sales) || 0,
@@ -387,7 +397,16 @@ export class InventoryService {
         if (descriptionAr) updateData.descriptionAr = descriptionAr;
         if (category) updateData.categoryName = category;
         if (!isNaN(pricePerUnit) && pricePerUnit > 0) updateData.price = pricePerUnit;
-        if (!isNaN(pricePerTola) && pricePerTola > 0) updateData.pricePerTola = pricePerTola;
+        
+        // Handle pricePerTola/pricePerPiece based on unit
+        if (!isNaN(pricePerTola) && pricePerTola > 0) {
+          if (unit === 'Piece') {
+            updateData.pricePerPiece = pricePerTola;
+          } else if (unit === 'Tola' || unit === 'kg') {
+            updateData.pricePerTola = pricePerTola;
+          }
+        }
+        
         if (unit) updateData.unit = unit;
         if (arabicName) updateData.nameAr = arabicName;
         if (!isNaN(lowStockThreshold) && lowStockThreshold >= 0) updateData.lowStockThreshold = lowStockThreshold;
@@ -414,7 +433,8 @@ export class InventoryService {
             description: descriptionEn || englishName || itemCode,
             descriptionAr: descriptionAr || arabicName || englishName || itemCode,
             price: !isNaN(pricePerUnit) && pricePerUnit > 0 ? pricePerUnit : 0,
-            pricePerTola: pricePerTola && !isNaN(pricePerTola) ? pricePerTola : 0,
+            pricePerTola: (unit === 'Tola' || unit === 'kg') && pricePerTola && !isNaN(pricePerTola) ? pricePerTola : 0,
+            pricePerPiece: unit === 'Piece' && pricePerTola && !isNaN(pricePerTola) ? pricePerTola : 0,
             sku: skuFromFile || itemCode || `SKU-${Date.now()}-${i}`,
             itemCode: itemCode,
             slug: slug || `product-${itemCode}-${Date.now()}`,
