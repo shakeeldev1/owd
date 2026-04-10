@@ -948,8 +948,10 @@ export class OrdersService implements OnModuleInit {
         // Check low stock using per-product threshold
         if (updatedProduct) {
           const threshold = (updatedProduct as any).lowStockThreshold || 10;
+          // Get the storage unit for the alert message
+          const storageUnit = unit === 'Tola' || unit === 'kg' ? 'Grams' : unit;
           if (updatedProduct.stock <= threshold && updatedProduct.stock >= 0) {
-            const alertMsg = `Product ${updatedProduct.name} is almost out of stock. Remaining quantity: ${updatedProduct.stock} Grams.`;
+            const alertMsg = `Product ${updatedProduct.name} is almost out of stock. Remaining quantity: ${updatedProduct.stock} ${storageUnit}.`;
             await this.notificationsService.notifyAdmins(
               'Low Stock Alert',
               alertMsg,
@@ -958,7 +960,7 @@ export class OrdersService implements OnModuleInit {
             await this.whatsAppService.sendLowStockAlert('admin', updatedProduct.name, updatedProduct.stock);
             // Send email alert
             try {
-              await this.mailService.sendLowStockAlert(updatedProduct.name, updatedProduct.stock, 'Grams');
+              await this.mailService.sendLowStockAlert(updatedProduct.name, updatedProduct.stock, storageUnit);
             } catch (e) { /* email failure should not block */ }
           }
         }

@@ -93,6 +93,7 @@ export class UpdateProductDto {
   @IsString() @IsOptional() itemCode?: string;
   @IsString() @IsOptional() unit?: string;
   @IsNumber() @IsOptional() pricePerTola?: number;
+  @IsNumber() @IsOptional() pricePerPiece?: number;
   @IsNumber() @IsOptional() lowStockThreshold?: number;
   @IsString() @IsOptional() category?: string;
   @IsString() @IsOptional() categoryName?: string;
