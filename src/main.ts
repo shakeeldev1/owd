@@ -21,7 +21,7 @@ async function bootstrap() {
   );
 
   /**
-   * CORS Configuration
+   * CORS Configuration...
    * Allow frontend from Vercel and local development
    */
   const allowedOrigins = [
