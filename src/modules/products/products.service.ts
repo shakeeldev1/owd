@@ -81,7 +81,7 @@ export class ProductsService {
 
     const product = await this.productModel.create(data);
     console.log(`[ProductCreate] Created product: ${product._id} in category: ${category}`);
-    return { message: 'Product created', product };
+    return product;
   }
 
   async findAll(query: {
@@ -286,13 +286,12 @@ export class ProductsService {
     const product = await this.productModel.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after' });
     if (!product) throw new NotFoundException('Product not found');
     console.log(`[ProductUpdate] Updated product: ${id}, new category: ${data.category}`);
-    return { message: 'Product updated', product: this.formatAdminProduct(product) };
+    return this.formatAdminProduct(product);
   }
 
   async remove(id: string) {
     const product = await this.productModel.findByIdAndDelete(id);
     if (!product) throw new NotFoundException('Product not found');
-    return { message: 'Product deleted' };
   }
 
   async exportToExcel(res: any) {
