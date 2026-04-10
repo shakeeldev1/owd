@@ -36,13 +36,16 @@ export class ProductsService {
         const cat = await this.categoryModel.findById(category).select('name').lean();
         if (cat) {
           return { category, categoryName: cat.name };
+        } else {
+          console.warn(`[ResolveCategoryName] Category ObjectId not found: ${category}`);
         }
       } catch (e) {
-        // If lookup fails, return what we have
+        console.warn(`[ResolveCategoryName] Error looking up category: ${e}`);
       }
     }
 
     // Return the category and categoryName as provided
+    // Even if lookup failed, pass the ObjectId through (validation will catch if it's actually invalid)
     return { category, categoryName };
   }
 
@@ -50,6 +53,11 @@ export class ProductsService {
     const slug = this.generateSlug(dto.name);
     const existing = await this.productModel.findOne({ slug });
     if (existing) throw new ConflictException('Product with this name already exists');
+
+    // Validate category is provided
+    if (!dto.category) {
+      throw new ConflictException('Product category is required');
+    }
 
     // Persist the new-arrival flag under a non-reserved schema field.
     const data: any = { ...dto, slug };
@@ -61,22 +69,18 @@ export class ProductsService {
       delete data.isNew;
     }
 
-    // Auto-populate categoryName from category ObjectId if needed
-    const { category, categoryName } = await this.resolveCategoryName(dto.category, dto.categoryName);
-    data.category = category;
-    data.categoryName = categoryName;
-    
-    // IMPORTANT: Validate that category ObjectId is set for proper filtering
-    if (!data.category) {
-      throw new ConflictException('Product category is required for proper filtering');
-    }
-    
-    // IMPORTANT: Validate that category ObjectId is set for proper filtering
-    if (!data.category) {
-      throw new ConflictException('Product category is required for proper filtering');
+    // Validate category ObjectId is valid
+    if (!Types.ObjectId.isValid(dto.category)) {
+      throw new ConflictException(`Invalid category ObjectId: ${dto.category}`);
     }
 
+    // Auto-populate categoryName from category ObjectId if needed
+    const { category, categoryName } = await this.resolveCategoryName(dto.category, dto.categoryName);
+    data.category = new Types.ObjectId(category);
+    data.categoryName = categoryName;
+
     const product = await this.productModel.create(data);
+    console.log(`[ProductCreate] Created product: ${product._id} in category: ${category}`);
     return { message: 'Product created', product };
   }
 
@@ -120,15 +124,20 @@ export class ProductsService {
       let resolvedCategoryId: Types.ObjectId | undefined;
 
       if (Types.ObjectId.isValid(normalizedCategory)) {
+        // Direct ObjectId provided
         resolvedCategoryId = new Types.ObjectId(normalizedCategory);
+        console.log(`[ProductFilter] Using direct ObjectId: ${resolvedCategoryId}`);
       } else {
-        // Attempt to resolve a slug (preferred) or a name to an ObjectId.
+        // Try to resolve slug or name to ObjectId  
         const categoryDoc = await this.categoryModel
           .findOne({
             $or: [
               { slug: normalizedCategory.toLowerCase() },
+              { slug: spacedCategory.toLowerCase() },
               { name: { $regex: '^' + spacedCategory + '$', $options: 'i' } },
               { nameAr: { $regex: '^' + spacedCategory + '$', $options: 'i' } },
+              // Last resort: case-insensitive partial match on name
+              { name: { $regex: normalizedCategory, $options: 'i' } },
             ],
           })
           .select('_id')
@@ -136,18 +145,23 @@ export class ProductsService {
 
         if (categoryDoc?._id) {
           resolvedCategoryId = new Types.ObjectId(String(categoryDoc._id));
+          console.log(`[ProductFilter] Resolved "${normalizedCategory}" to ObjectId: ${resolvedCategoryId}`);
+        } else {
+          console.warn(`[ProductFilter] Could not resolve category: "${normalizedCategory}". Returning all active products.`);
+          // FALLBACK: If resolution fails, don't filter by category
+          // This is better than returning 0 results
+          // Only set filter if we successfully resolved
         }
       }
 
-      // Only filter by resolved category ObjectId to ensure strict category separation.
-      // Remove substring regex matching on categoryName to prevent cross-category matches
-      // (e.g., filtering "oud" should not match "Dehn Al Oud" or "Oud Oil").
+      // Only filter by resolved category ObjectId if we found it
       if (resolvedCategoryId) {
         mongoFilter.category = resolvedCategoryId;
       } else {
-        // If we couldn't resolve the category, don't return results
-        // This prevents incorrect cross-category matches from substring matching
-        mongoFilter.category = { $eq: null };
+        // If we couldn't resolve the category, DON'T filter
+        // Return all products instead of 0 products
+        // User will see all products and can try adjusting the filter
+        console.log(`[ProductFilter] No category filter applied - returning all products`);
       }
     }
 
@@ -240,53 +254,38 @@ export class ProductsService {
       delete data.isNew;
     }
 
-    // Auto-populate categoryName from category ObjectId if needed
-    const { category, categoryName } = await this.resolveCategoryName(dto.category, dto.categoryName);
+    // Handle category updates (only if category is being updated)
     if (dto.category !== undefined) {
-    
-    // IMPORTANT: Ensure category ObjectId is always set for proper filtering
-    // If we have categoryName but no category ObjectId, look it up
-    if (data.categoryName && !data.category) {
+      // Validate category ObjectId format
+      if (!Types.ObjectId.isValid(dto.category)) {
+        throw new ConflictException(`Invalid category ObjectId: ${dto.category}`);
+      }
+
+      const { category, categoryName } = await this.resolveCategoryName(dto.category, dto.categoryName);
+      data.category = new Types.ObjectId(category);
+      if (categoryName) {
+        data.categoryName = categoryName;
+      } else if (dto.categoryName) {
+        data.categoryName = dto.categoryName;
+      }
+    } else if (dto.categoryName !== undefined) {
+      // If only categoryName is provided, try to look up the ObjectId
       try {
-        const cat = await this.categoryModel.findOne({ name: data.categoryName }).select('_id').lean();
+        const cat = await this.categoryModel.findOne({ name: dto.categoryName }).select('_id').lean();
         if (cat) {
-          data.category = cat._id;
+          data.category = new Types.ObjectId(String(cat._id));
+          data.categoryName = dto.categoryName;
+        } else {
+          console.warn(`[ProductUpdate] Could not find category by name: ${dto.categoryName}`);
         }
       } catch (e) {
-        // If lookup fails, continue without setting category
+        console.warn(`[ProductUpdate] Error looking up category by name: ${e}`);
       }
-    }
-    
-    // Validate that category ObjectId is set
-    if (!data.category) {
-      throw new ConflictException('Product category is required for proper filtering');
-    }
-      data.category = category;
-    }
-    if (dto.categoryName !== undefined || (dto.category !== undefined && !dto.categoryName)) {
-      data.categoryName = categoryName;
-    }
-    
-    // IMPORTANT: Ensure category ObjectId is always set for proper filtering
-    // If we have categoryName but no category ObjectId, look it up
-    if (data.categoryName && !data.category) {
-      try {
-        const cat = await this.categoryModel.findOne({ name: data.categoryName }).select('_id').lean();
-        if (cat) {
-          data.category = cat._id;
-        }
-      } catch (e) {
-        // If lookup fails, continue without setting category
-      }
-    }
-    
-    // Validate that category ObjectId is set
-    if (!data.category) {
-      throw new ConflictException('Product category is required for proper filtering');
     }
 
     const product = await this.productModel.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after' });
     if (!product) throw new NotFoundException('Product not found');
+    console.log(`[ProductUpdate] Updated product: ${id}, new category: ${data.category}`);
     return { message: 'Product updated', product: this.formatAdminProduct(product) };
   }
 
