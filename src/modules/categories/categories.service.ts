@@ -36,13 +36,10 @@ export class CategoriesService {
     if (!categories.length) return [];
 
     const categoriesById = new Map<string, CategoryDocument>();
-    const categoriesByName = new Map<string, CategoryDocument>();
 
     for (const category of categories) {
       const id = String(category._id);
       categoriesById.set(id, category);
-      categoriesByName.set((category.name || '').trim().toLowerCase(), category);
-      categoriesByName.set((category.nameAr || '').trim().toLowerCase(), category);
     }
 
     const productCountsByCategoryId = new Map<string, number>();
@@ -56,13 +53,10 @@ export class CategoriesService {
     for (const product of products) {
       let matchedCategory: CategoryDocument | undefined;
 
+      // Only count by ObjectId to match the filtering logic in products.service
       if (product.category) {
         const categoryId = product.category instanceof Types.ObjectId ? product.category.toString() : String(product.category);
         matchedCategory = categoriesById.get(categoryId);
-      }
-
-      if (!matchedCategory && product.categoryName) {
-        matchedCategory = categoriesByName.get(product.categoryName.trim().toLowerCase());
       }
 
       if (!matchedCategory) continue;
