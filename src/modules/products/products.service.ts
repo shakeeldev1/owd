@@ -65,6 +65,16 @@ export class ProductsService {
     const { category, categoryName } = await this.resolveCategoryName(dto.category, dto.categoryName);
     data.category = category;
     data.categoryName = categoryName;
+    
+    // IMPORTANT: Validate that category ObjectId is set for proper filtering
+    if (!data.category) {
+      throw new ConflictException('Product category is required for proper filtering');
+    }
+    
+    // IMPORTANT: Validate that category ObjectId is set for proper filtering
+    if (!data.category) {
+      throw new ConflictException('Product category is required for proper filtering');
+    }
 
     const product = await this.productModel.create(data);
     return { message: 'Product created', product };
@@ -233,10 +243,46 @@ export class ProductsService {
     // Auto-populate categoryName from category ObjectId if needed
     const { category, categoryName } = await this.resolveCategoryName(dto.category, dto.categoryName);
     if (dto.category !== undefined) {
+    
+    // IMPORTANT: Ensure category ObjectId is always set for proper filtering
+    // If we have categoryName but no category ObjectId, look it up
+    if (data.categoryName && !data.category) {
+      try {
+        const cat = await this.categoryModel.findOne({ name: data.categoryName }).select('_id').lean();
+        if (cat) {
+          data.category = cat._id;
+        }
+      } catch (e) {
+        // If lookup fails, continue without setting category
+      }
+    }
+    
+    // Validate that category ObjectId is set
+    if (!data.category) {
+      throw new ConflictException('Product category is required for proper filtering');
+    }
       data.category = category;
     }
     if (dto.categoryName !== undefined || (dto.category !== undefined && !dto.categoryName)) {
       data.categoryName = categoryName;
+    }
+    
+    // IMPORTANT: Ensure category ObjectId is always set for proper filtering
+    // If we have categoryName but no category ObjectId, look it up
+    if (data.categoryName && !data.category) {
+      try {
+        const cat = await this.categoryModel.findOne({ name: data.categoryName }).select('_id').lean();
+        if (cat) {
+          data.category = cat._id;
+        }
+      } catch (e) {
+        // If lookup fails, continue without setting category
+      }
+    }
+    
+    // Validate that category ObjectId is set
+    if (!data.category) {
+      throw new ConflictException('Product category is required for proper filtering');
     }
 
     const product = await this.productModel.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after' });
