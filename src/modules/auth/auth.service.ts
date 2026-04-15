@@ -7,6 +7,7 @@ import { User, UserDocument } from '../users/schemas/user.schema';
 import { SignupDto, LoginDto, VerifyOtpDto, ChangePasswordDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
 import { MailService } from './mail.service';
 import { SMSService } from '../sms/sms.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { normalizePhone } from '../../utils/phone';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class AuthService {
     private jwtService: JwtService,
     private mailService: MailService,
     private smsService: SMSService,
+    private whatsAppService: WhatsAppService,
   ) {}
 
   private generateOtp(): string {
@@ -34,7 +36,7 @@ export class AuthService {
     const email = dto.email.trim().toLowerCase();
     const existing = await this.userModel.findOne({ email });
     if (existing) {
-      throw new ConflictException('Email already registered');
+      throw new ConflictException('البريد الإلكتروني مسجل بالفعل');
     }
 
     const hashedPassword = await bcrypt.hash(dto.password, 12);
@@ -52,11 +54,16 @@ export class AuthService {
       isVerified: false,
     });
 
-    // Send OTP email
-    await this.mailService.sendOtpEmail(user.email, otp, user.fullName);
+    // Send OTP via WhatsApp only (Arabic message)
+    const otpMessage = `مرحباً ${user.fullName}\n\nرمز التحقق الخاص بك: ${otp}\nصالح لمدة 10 دقائق\n\nلا تشارك هذا الرمز مع أحد`;
+    const whatsappSent = await this.whatsAppService.sendMessage(normalizedPhone, otpMessage).catch(() => false);
+    
+    if (!whatsappSent) {
+      console.warn('⚠️ WhatsApp OTP delivery failed for new signup:', email);
+    }
 
     return {
-      message: 'Account created. Please verify your email with the OTP sent.',
+      message: 'تم إنشاء الحساب. يرجى التحقق برمز OTP المرسل عبر WhatsApp.',
       email: user.email,
     };
   }
@@ -104,11 +111,11 @@ export class AuthService {
   async resendOtp(email: string) {
     const user = await this.userModel.findOne({ email: email.trim().toLowerCase() });
     if (!user) {
-      throw new BadRequestException('User not found');
+      throw new BadRequestException('المستخدم غير موجود');
     }
 
     if (user.isVerified) {
-      throw new BadRequestException('Account already verified');
+      throw new BadRequestException('الحساب مُعطّل بالفعل');
     }
 
     const otp = this.generateOtp();
@@ -116,41 +123,53 @@ export class AuthService {
     user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
-    await this.mailService.sendOtpEmail(user.email, otp, user.fullName);
+    // Send OTP via WhatsApp (Arabic)
+    const otpMessage = `مرحباً ${user.fullName}\n\nرمز التحقق الخاص بك: ${otp}\nصالح لمدة 10 دقائق\n\nلا تشارك هذا الرمز مع أحد`;
+    const whatsappSent = await this.whatsAppService.sendMessage(user.phone, otpMessage).catch(() => false);
+    
+    if (!whatsappSent) {
+      console.warn('⚠️ WhatsApp OTP resend failed for:', email);
+    }
 
-    return { message: 'OTP resent successfully' };
+    return { message: 'تم إعادة إرسال OTP عبر WhatsApp' };
   }
 
   async login(dto: LoginDto) {
     const user = await this.userModel.findOne({ email: dto.email.trim().toLowerCase() }).select('+password');
     if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('بريد إلكتروني أو كلمة مرور غير صحيحة');
     }
 
     const isPasswordValid = await bcrypt.compare(dto.password, user.password);
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('بريد إلكتروني أو كلمة مرور غير صحيحة');
     }
 
     if (!user.isVerified) {
-      // Resend OTP
+      // Resend OTP via WhatsApp
       const otp = this.generateOtp();
       user.otp = otp;
       user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
       await user.save();
-      await this.mailService.sendOtpEmail(user.email, otp, user.fullName);
+      
+      const otpMessage = `مرحباً ${user.fullName}\n\nرمز التحقق الخاص بك: ${otp}\nصالح لمدة 10 دقائق\n\nلا تشارك هذا الرمز مع أحد`;
+      const whatsappSent = await this.whatsAppService.sendMessage(user.phone, otpMessage).catch(() => false);
+      
+      if (!whatsappSent) {
+        console.warn('⚠️ WhatsApp OTP delivery failed during login for:', user.email);
+      }
 
-      throw new UnauthorizedException('Account not verified. OTP sent to your email.');
+      throw new UnauthorizedException('الحساب لم يتم التحقق منه. تم إرسال OTP عبر WhatsApp.');
     }
 
     if (!user.isActive) {
-      throw new UnauthorizedException('Account is deactivated');
+      throw new UnauthorizedException('الحساب معطّل');
     }
 
     const token = this.generateToken(user);
 
     return {
-      message: 'Login successful',
+      message: 'تم تسجيل الدخول بنجاح',
       token,
       user: {
         id: user._id,
@@ -196,7 +215,7 @@ export class AuthService {
     const user = await this.userModel.findOne({ email: dto.email.trim().toLowerCase() });
     if (!user) {
       // Return success even if user not found to prevent email enumeration
-      return { message: 'If an account exists with this email, a reset code has been sent.' };
+      return { message: 'إذا كان هناك حساب بهذا البريد الإلكتروني، فسيتم إرسال رمز إعادة التعيين.' };
     }
 
     const otp = this.generateOtp();
@@ -204,27 +223,33 @@ export class AuthService {
     user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
     await user.save();
 
-    await this.mailService.sendPasswordResetEmail(user.email, otp, user.fullName);
+    // Send via WhatsApp (Arabic)
+    const resetMessage = `مرحباً ${user.fullName}\n\nرمز إعادة تعيين كلمة المرور الخاص بك: ${otp}\nصالح لمدة 10 دقائق\n\nلا تشارك هذا الرمز مع أحد`;
+    const whatsappSent = await this.whatsAppService.sendMessage(user.phone, resetMessage).catch(() => false);
+    
+    if (!whatsappSent) {
+      console.warn('⚠️ WhatsApp password reset code failed for:', user.email);
+    }
 
-    return { message: 'If an account exists with this email, a reset code has been sent.' };
+    return { message: 'إذا كان هناك حساب بهذا البريد الإلكتروني، فسيتم إرسال رمز إعادة التعيين.' };
   }
 
   async resetPassword(dto: ResetPasswordDto) {
     const user = await this.userModel.findOne({ email: dto.email.trim().toLowerCase() });
     if (!user) {
-      throw new BadRequestException('Invalid reset request');
+      throw new BadRequestException('طلب إعادة تعيين غير صالح');
     }
 
     if (!user.otp || !user.otpExpiry) {
-      throw new BadRequestException('No reset code found. Please request a new one.');
+      throw new BadRequestException('لا يوجد رمز إعادة تعيين. يرجى طلب واحد جديد.');
     }
 
     if (new Date() > user.otpExpiry) {
-      throw new BadRequestException('Reset code has expired. Please request a new one.');
+      throw new BadRequestException('انتهت صلاحية رمز إعادة التعيين. يرجى طلب واحد جديد.');
     }
 
     if (user.otp !== dto.otp) {
-      throw new BadRequestException('Invalid reset code');
+      throw new BadRequestException('رمز إعادة التعيين غير صحيح');
     }
 
     user.password = await bcrypt.hash(dto.newPassword, 12);
@@ -232,6 +257,6 @@ export class AuthService {
     user.otpExpiry = null as any;
     await user.save();
 
-    return { message: 'Password reset successfully. You can now login with your new password.' };
+    return { message: 'تم إعادة تعيين كلمة المرور بنجاح. يمكنك الآن تسجيل الدخول برمز المرور الجديد.' };
   }
 }

@@ -297,19 +297,21 @@ export class ProductsService {
   async exportToExcel(res: any) {
     const products = await this.productModel
       .find({ status: 'active' })
-      .select('name nameAr sku stock price originalPrice weight unit pricePerTola pricePerPiece lowStockThreshold image images description descriptionAr categoryName rating reviews sales badge badgeAr isNewArrival isBestseller isLimitedEdition isFeatured status')
+      .select('name nameAr sku stock price originalPrice weight unit pricePerTola pricePerQuarterTola pricePerPiece lowStockThreshold image images description descriptionAr categoryName rating reviews sales badge badgeAr isNewArrival isBestseller isLimitedEdition isFeatured status')
       .sort({ name: 1 });
 
-    const columnOrder = ['SKU', 'English Name', 'Arabic Name', 'Category', 'Price (QAR)', 'Original Price (QAR)', 'Unit', 'Weight (grams)', 'Price per Tola/Piece (QAR)', 'Stock Available', 'Low Stock Threshold', 'Total Sales', 'Rating', 'Total Reviews', 'Main Image URL', 'All Images (comma separated)', 'English Badge', 'Arabic Badge', 'New Arrival', 'Bestseller', 'Limited Edition', 'Featured', 'Status', 'English Description', 'Arabic Description'];
+    const columnOrder = ['SKU', 'English Name', 'Arabic Name', 'Category', 'Price (QAR)', 'Original Price (QAR)', 'Unit', 'Weight (grams)', 'Price per Tola/Quarter Tola/Piece (QAR)', 'Stock Available', 'Low Stock Threshold', 'Total Sales', 'Rating', 'Total Reviews', 'Main Image URL', 'All Images (comma separated)', 'English Badge', 'Arabic Badge', 'New Arrival', 'Bestseller', 'Limited Edition', 'Featured', 'Status', 'English Description', 'Arabic Description'];
 
     const rows: any[][] = [columnOrder]; // Header row
     
     for (const p of products) {
-      // Use pricePerPiece for Piece units, pricePerTola for Tola/kg units, otherwise use price
+      // Use pricePerPiece for Piece units, pricePerQuarterTola for Quarter Tola, pricePerTola for Tola/kg units, otherwise use price
       const unit = (p as any).unit || 'Grams';
       let tierPrice = 0;
       if (unit === 'Piece' && (p as any).pricePerPiece) {
         tierPrice = (p as any).pricePerPiece;
+      } else if (unit === 'Quarter Tola' && (p as any).pricePerQuarterTola) {
+        tierPrice = (p as any).pricePerQuarterTola;
       } else if ((unit === 'Tola' || unit === 'kg') && (p as any).pricePerTola) {
         tierPrice = (p as any).pricePerTola;
       }
@@ -529,6 +531,8 @@ export class ProductsService {
       price: p.price,
       originalPrice: p.originalPrice,
       pricePerTola: (p as any).pricePerTola,
+      pricePerQuarterTola: (p as any).pricePerQuarterTola,
+      pricePerPiece: (p as any).pricePerPiece,
       unit: (p as any).unit,
       image: p.image,
       images: p.images,
@@ -576,16 +580,11 @@ export class ProductsService {
       price: p.price,
       originalPrice: p.originalPrice,
       pricePerTola: (p as any).pricePerTola,
+      pricePerQuarterTola: (p as any).pricePerQuarterTola,
+      pricePerPiece: (p as any).pricePerPiece,
       unit: (p as any).unit,
-      image: p.image,
-      images: p.images,
-      slug: p.slug,
-      href: `/shop/${p.slug}`,
-      sku: p.sku,
-      itemCode: (p as any).itemCode,
-      category: p.category,
-      categoryName: p.categoryName,
-      section: (p as any).section,
+      stock: p.stock,
+      lowStockThreshold: (p as any).lowStockThreshold,
       rating: p.rating,
       reviews: p.reviews,
       productReviews: (p as any).productReviews || [],
@@ -596,8 +595,6 @@ export class ProductsService {
       isBestseller: p.isBestseller,
       isLimitedEdition: p.isLimitedEdition,
       isFeatured: p.isFeatured,
-      stock: p.stock,
-      lowStockThreshold: (p as any).lowStockThreshold,
       isAvailable: p.stock > 0,
       sales: p.sales,
       status: p.status,

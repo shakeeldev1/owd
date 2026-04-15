@@ -60,7 +60,9 @@ export class CartService {
 
     // Determine the correct price based on unit
     const unit = (product as any).unit || 'Grams';
-    const displayPrice = (unit === 'Tola' || unit === 'kg') && (product as any).pricePerTola 
+    const displayPrice = unit === 'Quarter Tola' && (product as any).pricePerQuarterTola
+      ? (product as any).pricePerQuarterTola
+      : (unit === 'Tola' || unit === 'kg') && (product as any).pricePerTola 
       ? (product as any).pricePerTola 
       : unit === 'Piece' && (product as any).pricePerPiece
       ? (product as any).pricePerPiece

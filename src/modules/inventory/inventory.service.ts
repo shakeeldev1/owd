@@ -87,7 +87,7 @@ export class InventoryService {
     const total = await this.productModel.countDocuments(filter);
     const products = await this.productModel
       .find(filter)
-      .select('name nameAr sku itemCode stock price pricePerTola pricePerPiece unit status image sales category categoryName lowStockThreshold')
+      .select('name nameAr sku itemCode stock price pricePerTola pricePerQuarterTola pricePerPiece unit status image sales category categoryName lowStockThreshold')
       .sort({ stock: 1 })
       .skip((page - 1) * limit)
       .limit(limit);
@@ -103,6 +103,7 @@ export class InventoryService {
         stock: p.stock,
         price: p.price,
         pricePerTola: (p as any).pricePerTola,
+        pricePerQuarterTola: (p as any).pricePerQuarterTola,
         pricePerPiece: (p as any).pricePerPiece,
         unit: (p as any).unit,
         status: p.status,
@@ -228,19 +229,21 @@ export class InventoryService {
   async exportToExcel(): Promise<Buffer> {
     const products = await this.productModel
       .find()
-      .select('name nameAr sku stock price pricePerTola pricePerPiece unit status categoryName sales lowStockThreshold image')
+      .select('name nameAr sku stock price pricePerTola pricePerQuarterTola pricePerPiece unit status categoryName sales lowStockThreshold image')
       .sort({ name: 1 });
 
-    const columnOrder = ['SKU', 'English Name', 'Arabic Name', 'Unit', 'Available Quantity', 'Price per Unit', 'Price per Tola/Piece', 'Category', 'Status', 'Sales', 'Low Stock Threshold', 'Image URL'];
+    const columnOrder = ['SKU', 'English Name', 'Arabic Name', 'Unit', 'Available Quantity', 'Price per Unit', 'Price per Tola/Quarter Tola/Piece', 'Category', 'Status', 'Sales', 'Low Stock Threshold', 'Image URL'];
     
     const rows: any[][] = [columnOrder]; // Header row
 
     for (const p of products) {
       const unit = (p as any).unit || 'Grams';
-      // Use pricePerPiece for Piece units, pricePerTola for Tola/kg units
+      // Use pricePerPiece for Piece units, pricePerQuarterTola for Quarter Tola, pricePerTola for Tola/kg units
       let tierPrice = 0;
       if (unit === 'Piece' && (p as any).pricePerPiece) {
         tierPrice = (p as any).pricePerPiece;
+      } else if (unit === 'Quarter Tola' && (p as any).pricePerQuarterTola) {
+        tierPrice = (p as any).pricePerQuarterTola;
       } else if ((unit === 'Tola' || unit === 'kg') && (p as any).pricePerTola) {
         tierPrice = (p as any).pricePerTola;
       }
@@ -339,7 +342,7 @@ export class InventoryService {
       unit: this.findHeaderIndex(headers, ['unit', 'الوحدة']),
       quantity: this.findHeaderIndex(headers, ['available quantity', 'quantity', 'stock', 'الكمية', 'المتاحة']),
       pricePerUnit: this.findHeaderIndex(headers, ['price per gram', 'price per unit', 'unit price', 'السعرلكلجرام']),
-      pricePerTola: this.findHeaderIndex(headers, ['price per tola', 'price per piece', 'السعرلكلتولة']),
+      pricePerTola: this.findHeaderIndex(headers, ['price per tola', 'price per quarter tola', 'price per piece', 'السعرلكلتولة']),
       status: this.findHeaderIndex(headers, ['status', 'الحالة']),
       lowStockThreshold: this.findHeaderIndex(headers, ['low stock threshold', 'threshold', 'حدالمخزونالمنخفض']),
       imageUrl: this.findHeaderIndex(headers, ['image url', 'image', 'photo', 'picture', 'رابطالصورة']),
@@ -398,10 +401,12 @@ export class InventoryService {
         if (category) updateData.categoryName = category;
         if (!isNaN(pricePerUnit) && pricePerUnit > 0) updateData.price = pricePerUnit;
         
-        // Handle pricePerTola/pricePerPiece based on unit
+        // Handle pricePerTola/pricePerQuarterTola/pricePerPiece based on unit
         if (!isNaN(pricePerTola) && pricePerTola > 0) {
           if (unit === 'Piece') {
             updateData.pricePerPiece = pricePerTola;
+          } else if (unit === 'Quarter Tola') {
+            updateData.pricePerQuarterTola = pricePerTola;
           } else if (unit === 'Tola' || unit === 'kg') {
             updateData.pricePerTola = pricePerTola;
           }

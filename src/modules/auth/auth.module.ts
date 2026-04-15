@@ -10,6 +10,7 @@ import { MailService } from './mail.service';
 import { User, UserSchema } from '../users/schemas/user.schema';
 import { UsersModule } from '../users/users.module';
 import { SMSModule } from '../sms/sms.module';
+import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { RolesGuard } from './roles.guard';
 
 @Module({
@@ -26,6 +27,7 @@ import { RolesGuard } from './roles.guard';
     }),
     UsersModule,
     SMSModule,
+    WhatsAppModule,
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy, MailService, RolesGuard],

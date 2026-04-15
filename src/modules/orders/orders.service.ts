@@ -1016,12 +1016,30 @@ export class OrdersService implements OnModuleInit {
 
     const subtotal = dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const shippingCost = subtotal >= 500 ? 0 : 30;
-    const total = subtotal + shippingCost;
+    
+    // Check if this is a first order and apply 10% discount
+    const previousOrders = await this.orderModel.countDocuments({ user: userId });
+    let discount = 0;
+    let discountReason = '';
+    if (previousOrders === 0) {
+      discount = Math.round(subtotal * 0.1); // 10% first order discount
+      discountReason = 'First order discount (10%)';
+    }
+    
+    const total = Math.max(0, subtotal - discount + shippingCost);
     const loyaltyPoints = this.calculateLoyaltyPoints(total);
 
     const paymentMethod = dto.paymentMethod || 'cod';
+    const country = dto.country || 'QA';
+    const isInternational = country !== 'QA';
+
+    // International orders must use online payment
+    if (isInternational && !['skipcash', 'online', 'visa', 'mastercard', 'apple_pay', 'bank_transfer'].includes(paymentMethod)) {
+      throw new BadRequestException('International orders require online payment method');
+    }
+
     const allowedWebsiteMethods = ['cod', 'skipcash'];
-    if (!allowedWebsiteMethods.includes(paymentMethod)) {
+    if (!isInternational && !allowedWebsiteMethods.includes(paymentMethod)) {
       throw new BadRequestException('Unsupported payment method for website checkout');
     }
 
@@ -1048,12 +1066,23 @@ export class OrdersService implements OnModuleInit {
     const customerPhone = dto.customer?.phone?.trim() || user.phone || '';
     const normalizedItems = this.normalizeOrderItemsForCreate(dto.items);
 
+    // Set estimated delivery date
+    const estimatedDeliveryDate = new Date();
+    if (isInternational) {
+      estimatedDeliveryDate.setDate(estimatedDeliveryDate.getDate() + 5); // 5 days for international
+    } else {
+      estimatedDeliveryDate.setDate(estimatedDeliveryDate.getDate() + 3); // 3 days for local
+    }
+
     let order: OrderDocument;
     try {
       // Always add payment_paid to statusHistory if paymentStatus is paid
       const statusHistory = [{ status: 'pending', timestamp: new Date(), note: 'Order placed' }];
       if (paymentStatus === 'paid') {
         statusHistory.push({ status: 'payment_paid', timestamp: new Date(), note: 'Payment confirmed' });
+      }
+      if (discount > 0) {
+        statusHistory.push({ status: 'discount_applied', timestamp: new Date(), note: discountReason });
       }
       order = await this.orderModel.create({
         orderNumber: this.generateOrderNumber(),
@@ -1065,9 +1094,13 @@ export class OrdersService implements OnModuleInit {
         },
         items: normalizedItems,
         subtotal,
+        discount,
         shippingCost,
         total,
-        shippingAddress: dto.shippingAddress,
+        shippingAddress: dto.shippingAddress || '',
+        country,
+        isInternational,
+        estimatedDeliveryDate,
         paymentMethod,
         paymentId: dto.paymentId || '',
         paymentStatus,

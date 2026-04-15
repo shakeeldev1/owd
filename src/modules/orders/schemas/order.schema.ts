@@ -118,6 +118,18 @@ export class Order {
   @Prop({ default: '' })
   shippingAddress!: string;
 
+  @Prop({ default: 'QA', enum: ['QA', 'AE', 'SA', 'KW', 'BH', 'OM', 'EG', 'JO', 'LB', 'SY', 'IQ', 'PS', 'YE', 'OTHER'] })
+  country!: string;
+
+  @Prop({
+    type: Date,
+    default: () => new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days default
+  })
+  estimatedDeliveryDate!: Date;
+
+  @Prop({ default: false })
+  isInternational!: boolean;
+
   @Prop({ default: '' })
   trackingNumber!: string;
 

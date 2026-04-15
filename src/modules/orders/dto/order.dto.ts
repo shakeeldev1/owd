@@ -41,12 +41,13 @@ export class CreateOrderDto {
   @Type(() => OrderItemDto)
   items!: OrderItemDto[];
 
-  @IsString() @IsNotEmpty() shippingAddress!: string;
+  @IsString() @IsOptional() shippingAddress?: string;
   @IsEnum(ORDER_PAYMENT_METHODS) @IsOptional() paymentMethod?: string;
   @IsString() @IsOptional() paymentId?: string;
   @IsEnum(ORDER_SALES_CHANNELS) @IsOptional() salesChannel?: string;
   @IsString() @IsOptional() discountCode?: string;
   @IsString() @IsOptional() notes?: string;
+  @IsString() @IsOptional() country?: string;
 
   @ValidateNested()
   @Type(() => OrderCustomerDto)
@@ -56,12 +57,13 @@ export class CreateOrderDto {
 
 export class AdminCreateOrderDto {
   @IsString() @IsNotEmpty() customerName!: string;
+  @IsString() @IsNotEmpty() customerPhone!: string;
   @IsString() @IsOptional() customerEmail?: string;
-  @IsString() @IsOptional() customerPhone?: string;
-  @IsString() @IsNotEmpty() shippingAddress!: string;
+  @IsString() @IsOptional() shippingAddress?: string;
   @IsEnum(ORDER_PAYMENT_METHODS) @IsOptional() paymentMethod?: string;
   @IsEnum(ORDER_PAYMENT_STATUSES) @IsOptional() paymentStatus?: string;
   @IsEnum(ORDER_SALES_CHANNELS) @IsOptional() salesChannel?: string;
+  @IsString() @IsOptional() country?: string;
 
   @IsArray()
   @ValidateNested({ each: true })
@@ -127,9 +129,10 @@ export class CreateSkipCashCheckoutSessionDto {
   @Type(() => OrderItemDto)
   items!: OrderItemDto[];
 
-  @IsString() @IsNotEmpty() shippingAddress!: string;
+  @IsString() @IsOptional() shippingAddress?: string;
   @IsString() @IsOptional() discountCode?: string;
   @IsString() @IsOptional() notes?: string;
+  @IsString() @IsOptional() country?: string;
 
   @ValidateNested()
   @Type(() => OrderCustomerDto)

@@ -64,11 +64,14 @@ export class Product {
   @Prop({ unique: true, sparse: true })
   itemCode: string;
 
-  @Prop({ default: 'Grams', enum: ['Grams', 'Piece', 'Tola', 'ml', 'kg'] })
+  @Prop({ default: 'Grams', enum: ['Grams', 'Piece', 'Tola', 'Quarter Tola', 'ml', 'kg'] })
   unit: string;
 
   @Prop({ default: 0 })
   pricePerTola: number;
+
+  @Prop({ default: 0 })
+  pricePerQuarterTola: number;
 
   @Prop({ default: 0 })
   pricePerPiece: number;

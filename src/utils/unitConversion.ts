@@ -8,11 +8,13 @@
  */
 
 export const UNIT_CONVERSION_FACTORS = {
-  tola: 11.66,        // 1 Tola = 11.66 Grams
-  piece: 1,           // 1 Piece = 1 unit (no conversion)
-  grams: 1,           // Base unit
-  ml: 1,              // No conversion (volume-based)
-  kg: 1000,           // 1 kg = 1000 grams (though typically stored as grams)
+  tola: 11.66,                    // 1 Tola = 11.66 Grams
+  'quarter tola': 2.915,          // 1 Quarter Tola = 0.25 × 11.66 = 2.915 Grams
+  'quarter-tola': 2.915,          // Alternative format
+  piece: 1,                       // 1 Piece = 1 unit (no conversion)
+  grams: 1,                       // Base unit
+  ml: 1,                          // No conversion (volume-based)
+  kg: 1000,                       // 1 kg = 1000 grams (though typically stored as grams)
 } as const;
 
 /**
