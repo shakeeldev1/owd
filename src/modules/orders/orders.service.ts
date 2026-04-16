@@ -566,7 +566,7 @@ export class OrdersService implements OnModuleInit {
     await this.validateStock(dto.items);
 
     const subtotal = dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const shippingCost = subtotal >= 500 ? 0 : 30;
+    const shippingCost = 0; // Shipping is always free
     const total = subtotal + shippingCost;
 
     const backendUrl = this.configService.get<string>('BACKEND_URL') || 'http://localhost:5000';
@@ -1015,7 +1015,7 @@ export class OrdersService implements OnModuleInit {
     await this.validateStock(dto.items);
 
     const subtotal = dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const shippingCost = subtotal >= 500 ? 0 : 30;
+    const shippingCost = 0; // Shipping is always free
     
     // Check if this is a first order and apply 10% discount
     const previousOrders = await this.orderModel.countDocuments({ user: userId });
