@@ -25,6 +25,7 @@ import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { SMSService } from '../sms/sms.service';
 import { MailService } from '../auth/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import { convertToGrams } from '../../utils/unitConversion';
 
 @Injectable()
@@ -41,6 +42,7 @@ export class OrdersService implements OnModuleInit {
     private smsService: SMSService,
     private mailService: MailService,
     private notificationsService: NotificationsService,
+    private loyaltyService: LoyaltyService,
   ) {}
 
   async onModuleInit() {
@@ -162,9 +164,9 @@ export class OrdersService implements OnModuleInit {
     return `ORD-${y}${m}-${rand}`;
   }
 
-  // ─── Calculate loyalty points (1 point per 10 QAR) ───
-  private calculateLoyaltyPoints(total: number): number {
-    return Math.floor(total / 10);
+  // ─── Calculate loyalty points based on order total and customer tier ───
+  private calculateLoyaltyPoints(total: number, tier: string = 'silver'): number {
+    return this.loyaltyService.calculatePointsForOrder(total, tier);
   }
 
   private isPaidStatus(status: string) {
@@ -1025,9 +1027,36 @@ export class OrdersService implements OnModuleInit {
       discount = Math.round(subtotal * 0.1); // 10% first order discount
       discountReason = 'First order discount (10%)';
     }
+
+    // Handle loyalty discount
+    let loyaltyDiscount = 0;
+    let loyaltyPointsUsed = 0;
+    if (dto.loyaltyDiscount && dto.loyaltyDiscount > 0) {
+      // Validate loyalty discount doesn't exceed order total
+      const orderTotalBeforeLoyalty = Math.max(0, subtotal - discount + shippingCost);
+      loyaltyDiscount = Math.min(dto.loyaltyDiscount, orderTotalBeforeLoyalty);
+      
+      // Deduct points for the loyalty discount
+      try {
+        const redemptionResult = await this.loyaltyService.redeemPointsForDiscount(
+          userId,
+          dto.loyaltyPointsToUse || 0,
+          orderTotalBeforeLoyalty,
+        );
+        loyaltyPointsUsed = redemptionResult.pointsUsed;
+        loyaltyDiscount = redemptionResult.discountAmount;
+      } catch (e) {
+        // If redemption fails, just ignore loyalty discount
+        loyaltyDiscount = 0;
+        loyaltyPointsUsed = 0;
+      }
+    }
     
-    const total = Math.max(0, subtotal - discount + shippingCost);
-    const loyaltyPoints = this.calculateLoyaltyPoints(total);
+    const total = Math.max(0, subtotal - discount - loyaltyDiscount + shippingCost);
+    
+    // Calculate loyalty points earned based on user's current tier (after discount applied)
+    const userTier = user.loyaltyTier || 'silver';
+    const loyaltyPoints = this.calculateLoyaltyPoints(total, userTier);
 
     const paymentMethod = dto.paymentMethod || 'cod';
     const country = dto.country || 'QA';
@@ -1108,6 +1137,9 @@ export class OrdersService implements OnModuleInit {
         discountCode: dto.discountCode || '',
         notes: dto.notes || '',
         loyaltyPointsEarned: loyaltyPoints,
+        loyaltyDiscount,
+        loyaltyPointsUsed,
+        loyaltyTierAtOrder: userTier,
         paymentCompletedAt: this.isPaidStatus(paymentStatus) ? new Date() : undefined,
         statusHistory,
       });
@@ -1505,35 +1537,35 @@ export class OrdersService implements OnModuleInit {
 
         // Award loyalty points
         if (user) {
-          const points = updatedOrder.loyaltyPointsEarned || this.calculateLoyaltyPoints(updatedOrder.total);
-          await this.userModel.findByIdAndUpdate(user._id, {
-            $inc: { loyaltyPoints: points, lifetimePoints: points },
-          });
+          const points = updatedOrder.loyaltyPointsEarned || this.calculateLoyaltyPoints(updatedOrder.total, updatedOrder.loyaltyTierAtOrder || 'silver');
+          
+          // Use loyalty service to award points and handle tier updates
+          await this.loyaltyService.awardPoints(
+            user._id.toString(),
+            points,
+            `Earned from order ${updatedOrder.orderNumber}`,
+            updatedOrder._id.toString(),
+            updatedOrder.total,
+          );
 
-          // Update loyalty tier
+          // Fetch updated user with new tier
           const updatedUser = await this.userModel.findById(user._id);
-          if (updatedUser) {
-            let newTier = 'bronze';
-            if (updatedUser.lifetimePoints >= 10000) newTier = 'platinum';
-            else if (updatedUser.lifetimePoints >= 5000) newTier = 'gold';
-            else if (updatedUser.lifetimePoints >= 2000) newTier = 'silver';
-
-            if (updatedUser.loyaltyTier !== newTier) {
-              await this.userModel.findByIdAndUpdate(user._id, { loyaltyTier: newTier });
-              await this.whatsAppService.sendLoyaltyUpdate(
-                customerPhone,
-                customerName,
-                updatedUser.loyaltyPoints + points,
-                newTier,
-              );
-            } else {
-              await this.whatsAppService.sendLoyaltyUpdate(
-                customerPhone,
-                customerName,
-                updatedUser.loyaltyPoints + points,
-                updatedUser.loyaltyTier || 'bronze',
-              );
-            }
+          if (updatedUser && updatedUser.loyaltyTier !== user.loyaltyTier) {
+            // Tier was upgraded, send notification
+            await this.whatsAppService.sendLoyaltyUpdate(
+              customerPhone,
+              customerName,
+              updatedUser.loyaltyPoints,
+              updatedUser.loyaltyTier || 'silver',
+            );
+          } else {
+            // Send regular points earned notification
+            await this.whatsAppService.sendLoyaltyUpdate(
+              customerPhone,
+              customerName,
+              updatedUser?.loyaltyPoints || 0,
+              updatedUser?.loyaltyTier || 'silver',
+            );
           }
 
           await this.updateCustomerType(user._id.toString());

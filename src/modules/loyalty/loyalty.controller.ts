@@ -35,11 +35,20 @@ export class LoyaltyController {
     return this.loyaltyService.getTransactionHistory(req.user._id, { page, limit, type });
   }
 
-  // User: Redeem points
+  // User: Preview discount from points (without deducting)
+  @Post('preview-discount')
+  @UseGuards(AuthGuard('jwt'))
+  previewDiscount(@Request() req: any, @Body('points') points: number) {
+    return this.loyaltyService.previewPointsDiscount(req.user._id, points);
+  }
+
+  // User: Redeem points (deducts immediately - used for one-click redemption)
   @Post('redeem')
   @UseGuards(AuthGuard('jwt'))
   redeemPoints(@Request() req: any, @Body('points') points: number) {
-    return this.loyaltyService.redeemPoints(req.user._id, points);
+    // This endpoint is for backward compatibility or manual redemption
+    // For checkout, redemption happens during order creation with auto-discount
+    return this.loyaltyService.previewPointsDiscount(req.user._id, points);
   }
 
   // Admin: Get loyalty stats

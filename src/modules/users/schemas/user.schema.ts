@@ -38,15 +38,22 @@ export class User {
   @Prop()
   otpExpiry!: Date;
 
-  @Prop({ default: 'bronze', enum: ['bronze', 'silver', 'gold', 'platinum'] })
+  // Loyalty Tier: Automatically calculated based on total_spent
+  // Silver: total_spent < 50,000 QAR
+  // Gold: total_spent >= 50,000 QAR
+  // Platinum: total_spent >= 150,000 QAR
+  @Prop({ default: 'silver', enum: ['silver', 'gold', 'platinum'] })
   loyaltyTier!: string;
 
+  // Current loyalty points balance (can be used for discount)
   @Prop({ default: 0 })
   loyaltyPoints!: number;
 
+  // Lifetime points earned (never decreases, used for tier calculation)
   @Prop({ default: 0 })
   lifetimePoints!: number;
 
+  // Total amount spent by customer (in QAR)
   @Prop({ default: 0 })
   totalSpent!: number;
 

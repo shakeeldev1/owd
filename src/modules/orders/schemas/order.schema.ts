@@ -166,6 +166,18 @@ export class Order {
   // Loyalty points earned from this order
   @Prop({ default: 0 })
   loyaltyPointsEarned!: number;
+
+  // Loyalty discount applied to this order
+  @Prop({ default: 0 })
+  loyaltyDiscount!: number;
+
+  // Points used for loyalty discount
+  @Prop({ default: 0 })
+  loyaltyPointsUsed!: number;
+
+  // Customer tier at time of order
+  @Prop({ default: 'silver', enum: ['silver', 'gold', 'platinum'] })
+  loyaltyTierAtOrder!: string;
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);

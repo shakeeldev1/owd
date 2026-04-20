@@ -10,6 +10,7 @@ import { Cart, CartSchema } from '../cart/schemas/cart.schema';
 import { Settings, SettingsSchema } from '../settings/settings.schema';
 import { AuthModule } from '../auth/auth.module';
 import { SMSModule } from '../sms/sms.module';
+import { LoyaltyModule } from '../loyalty/loyalty.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { SMSModule } from '../sms/sms.module';
     ]),
     AuthModule,
     SMSModule,
+    LoyaltyModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

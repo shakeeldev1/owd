@@ -6,44 +6,93 @@ import { User, UserDocument } from '../users/schemas/user.schema';
 
 @Injectable()
 export class LoyaltyService {
+  // Constants
+  private readonly POINT_VALUE = 0.15; // 1 point = 0.15 QAR (5000 points = 750 QAR)
+  private readonly SILVER_TIER_RATE = 25; // 1 point per 25 QAR
+  private readonly GOLD_TIER_RATE = 20; // 1 point per 20 QAR
+  private readonly PLATINUM_TIER_RATE = 15; // 1 point per 15 QAR
+  private readonly SILVER_THRESHOLD = 50000; // QAR
+  private readonly GOLD_THRESHOLD = 150000; // QAR
+
   constructor(
     @InjectModel(LoyaltyTransaction.name)
     private loyaltyModel: Model<LoyaltyTransactionDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
   ) {}
 
-  // Tier thresholds
-  private getTier(lifetimePoints: number): string {
-    if (lifetimePoints >= 10000) return 'platinum';
-    if (lifetimePoints >= 5000) return 'gold';
-    if (lifetimePoints >= 2000) return 'silver';
-    return 'bronze';
+  /**
+   * Calculate tier based on total lifetime spending
+   * Silver: total_spent < 50,000 QAR
+   * Gold: total_spent >= 50,000 QAR
+   * Platinum: total_spent >= 150,000 QAR
+   */
+  private calculateTierFromSpending(totalSpent: number): string {
+    if (totalSpent >= this.GOLD_THRESHOLD) return 'platinum';
+    if (totalSpent >= this.SILVER_THRESHOLD) return 'gold';
+    return 'silver';
   }
 
-  // Calculate points earned for an order (1 point per 10 QAR)
-  calculatePoints(total: number): number {
-    return Math.floor(total / 10);
+  /**
+   * Calculate points earned for an order based on tier
+   * Silver: 1 point per 25 QAR
+   * Gold: 1 point per 20 QAR
+   * Platinum: 1 point per 15 QAR
+   */
+  calculatePointsForOrder(orderAmount: number, tier: string): number {
+    let rate = this.SILVER_TIER_RATE;
+    if (tier === 'gold') rate = this.GOLD_TIER_RATE;
+    if (tier === 'platinum') rate = this.PLATINUM_TIER_RATE;
+    return Math.floor(orderAmount / rate);
   }
 
-  // Award points to user
+  /**
+   * Convert points to discount value
+   * 1 point = 0.15 QAR
+   */
+  calculateDiscountFromPoints(points: number): number {
+    return Math.floor(points * this.POINT_VALUE * 100) / 100; // Round to 2 decimal places
+  }
+
+  /**
+   * Convert discount value back to points (for deduction)
+   * Ensures we only deduct points for the actual discount applied
+   */
+  calculatePointsFromDiscount(discount: number): number {
+    return Math.floor(discount / this.POINT_VALUE);
+  }
+
+  /**
+   * Award points to user after order completion
+   * Updates tier based on new total_spent
+   */
   async awardPoints(
     userId: string,
     points: number,
     description: string,
     orderId?: string,
+    orderAmount?: number,
   ) {
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
-    const newBalance = (user.loyaltyPoints || 0) + points;
-    const newLifetime = (user.lifetimePoints || 0) + points;
-    const newTier = this.getTier(newLifetime);
+    // Update balances
+    const newPointsBalance = (user.loyaltyPoints || 0) + points;
+    const newLifetimePoints = (user.lifetimePoints || 0) + points;
+    const newTotalSpent = (user.totalSpent || 0) + (orderAmount || 0);
+    
+    // Recalculate tier based on new total_spent
+    const newTier = this.calculateTierFromSpending(newTotalSpent);
 
-    await this.userModel.findByIdAndUpdate(userId, {
-      loyaltyPoints: newBalance,
-      lifetimePoints: newLifetime,
-      loyaltyTier: newTier,
-    });
+    const updatedUser = await this.userModel.findByIdAndUpdate(
+      userId,
+      {
+        loyaltyPoints: newPointsBalance,
+        lifetimePoints: newLifetimePoints,
+        loyaltyTier: newTier,
+        totalSpent: newTotalSpent,
+      },
+      { new: true },
+    );
 
     const transaction = await this.loyaltyModel.create({
       user: new Types.ObjectId(userId),
@@ -51,14 +100,75 @@ export class LoyaltyService {
       points,
       description,
       order: orderId ? new Types.ObjectId(orderId) : undefined,
-      balanceAfter: newBalance,
+      balanceAfter: newPointsBalance,
     });
 
-    return { message: 'Points awarded', transaction, newBalance, tier: newTier };
+    return {
+      message: 'Points awarded',
+      transaction,
+      newPointsBalance,
+      newTier,
+      totalSpent: newTotalSpent,
+    };
   }
 
-  // Redeem points (100 points = 10 QAR discount)
-  async redeemPoints(userId: string, points: number) {
+  /**
+   * Redeem points for discount at checkout
+   * Auto-applies discount without manual user action
+   * Returns discount value and points deducted
+   */
+  async redeemPointsForDiscount(
+    userId: string,
+    pointsToRedeem: number,
+    orderTotal: number,
+  ) {
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
+
+    if ((user.loyaltyPoints || 0) < pointsToRedeem) {
+      throw new BadRequestException('Insufficient loyalty points');
+    }
+
+    // Calculate discount from points
+    let discountValue = this.calculateDiscountFromPoints(pointsToRedeem);
+
+    // Ensure discount doesn't exceed order total
+    if (discountValue > orderTotal) {
+      discountValue = orderTotal;
+    }
+
+    // Calculate actual points to deduct
+    const actualPointsDeducted = this.calculatePointsFromDiscount(discountValue);
+    const newPointsBalance = (user.loyaltyPoints || 0) - actualPointsDeducted;
+
+    // Update user
+    await this.userModel.findByIdAndUpdate(userId, {
+      loyaltyPoints: newPointsBalance,
+    });
+
+    // Create transaction record
+    const transaction = await this.loyaltyModel.create({
+      user: new Types.ObjectId(userId),
+      type: 'redeemed',
+      points: -actualPointsDeducted,
+      description: `Redeemed ${actualPointsDeducted} points for ${discountValue} QAR discount`,
+      balanceAfter: newPointsBalance,
+    });
+
+    return {
+      message: 'Points redeemed for discount',
+      transaction,
+      discountAmount: discountValue,
+      pointsUsed: actualPointsDeducted,
+      newPointsBalance,
+    };
+  }
+
+  /**
+   * Get discount info for given points (preview without deducting)
+   * Used for checkout preview/display
+   */
+  async previewPointsDiscount(userId: string, points: number) {
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
@@ -66,47 +176,29 @@ export class LoyaltyService {
       throw new BadRequestException('Insufficient loyalty points');
     }
 
-    if (points < 100) {
-      throw new BadRequestException('Minimum 100 points required for redemption');
-    }
-
-    const discountAmount = Math.floor(points / 100) * 10; // 100 points = 10 QAR
-    const actualPoints = Math.floor(points / 100) * 100; // Round to nearest 100
-    const newBalance = (user.loyaltyPoints || 0) - actualPoints;
-
-    await this.userModel.findByIdAndUpdate(userId, {
-      loyaltyPoints: newBalance,
-    });
-
-    const transaction = await this.loyaltyModel.create({
-      user: new Types.ObjectId(userId),
-      type: 'redeemed',
-      points: -actualPoints,
-      description: `Redeemed ${actualPoints} points for ${discountAmount} QAR discount`,
-      balanceAfter: newBalance,
-    });
-
+    const discountValue = this.calculateDiscountFromPoints(points);
+    
     return {
-      message: 'Points redeemed',
-      transaction,
-      discountAmount,
-      pointsUsed: actualPoints,
-      newBalance,
+      points,
+      discountValue,
+      message: `${points} points = ${discountValue} QAR discount`,
     };
   }
 
-  // Add bonus points (admin action)
+  /**
+   * Add bonus points (admin action)
+   */
   async addBonusPoints(userId: string, points: number, description: string) {
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
-    const newBalance = (user.loyaltyPoints || 0) + points;
-    const newLifetime = (user.lifetimePoints || 0) + points;
-    const newTier = this.getTier(newLifetime);
+    const newPointsBalance = (user.loyaltyPoints || 0) + points;
+    const newLifetimePoints = (user.lifetimePoints || 0) + points;
+    const newTier = this.calculateTierFromSpending(user.totalSpent || 0);
 
     await this.userModel.findByIdAndUpdate(userId, {
-      loyaltyPoints: newBalance,
-      lifetimePoints: newLifetime,
+      loyaltyPoints: newPointsBalance,
+      lifetimePoints: newLifetimePoints,
       loyaltyTier: newTier,
     });
 
@@ -115,10 +207,10 @@ export class LoyaltyService {
       type: 'bonus',
       points,
       description: description || 'Bonus points from admin',
-      balanceAfter: newBalance,
+      balanceAfter: newPointsBalance,
     });
 
-    return { message: 'Bonus points added', transaction, newBalance, tier: newTier };
+    return { message: 'Bonus points added', transaction, newPointsBalance, tier: newTier };
   }
 
   // Adjust points (admin action - can be negative)
@@ -143,21 +235,49 @@ export class LoyaltyService {
     return { message: 'Points adjusted', transaction, newBalance };
   }
 
-  // Get user's loyalty info
+  /**
+   * Get user's loyalty info for display
+   * Includes tier, points, discount value, and points to next milestone
+   */
   async getUserLoyalty(userId: string) {
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
-    const nextTier = this.getNextTier(user.loyaltyTier || 'bronze');
-    const pointsToNext = this.getPointsToNextTier(user.lifetimePoints || 0);
+    const currentPoints = user.loyaltyPoints || 0;
+    const discountValue = this.calculateDiscountFromPoints(currentPoints);
+    
+    // Calculate remaining points to next 5000 points milestone
+    const pointsModulo = currentPoints % 5000;
+    const pointsToNextMilestone = pointsModulo === 0 ? 5000 : 5000 - pointsModulo;
+
+    // Determine next tier based on totalSpent
+    const currentTier = user.loyaltyTier || 'silver';
+    let nextTier: string | null = null;
+    let spentToNextTier = 0;
+
+    if (currentTier === 'silver') {
+      nextTier = 'gold';
+      spentToNextTier = Math.max(0, this.SILVER_THRESHOLD - (user.totalSpent || 0));
+    } else if (currentTier === 'gold') {
+      nextTier = 'platinum';
+      spentToNextTier = Math.max(0, this.GOLD_THRESHOLD - (user.totalSpent || 0));
+    }
 
     return {
-      points: user.loyaltyPoints || 0,
+      tier: currentTier,
+      points: currentPoints,
       lifetimePoints: user.lifetimePoints || 0,
-      tier: user.loyaltyTier || 'bronze',
+      totalSpent: user.totalSpent || 0,
+      discountValue: Math.round(discountValue * 100) / 100, // Round to 2 decimals
+      pointsToNextMilestone,
       nextTier,
-      pointsToNextTier: pointsToNext,
-      discountValue: Math.floor((user.loyaltyPoints || 0) / 100) * 10,
+      spentToNextTier,
+      tierRates: {
+        silver: `1 point per ${this.SILVER_TIER_RATE} QAR`,
+        gold: `1 point per ${this.GOLD_TIER_RATE} QAR`,
+        platinum: `1 point per ${this.PLATINUM_TIER_RATE} QAR`,
+      },
+      pointValue: this.POINT_VALUE,
     };
   }
 
@@ -236,18 +356,5 @@ export class LoyaltyService {
       .limit(limit);
 
     return { users, total, page, totalPages: Math.ceil(total / limit) };
-  }
-
-  private getNextTier(current: string): string | null {
-    const tiers = ['bronze', 'silver', 'gold', 'platinum'];
-    const idx = tiers.indexOf(current);
-    return idx < tiers.length - 1 ? tiers[idx + 1] : null;
-  }
-
-  private getPointsToNextTier(lifetimePoints: number): number {
-    if (lifetimePoints >= 10000) return 0;
-    if (lifetimePoints >= 5000) return 10000 - lifetimePoints;
-    if (lifetimePoints >= 2000) return 5000 - lifetimePoints;
-    return 2000 - lifetimePoints;
   }
 }
