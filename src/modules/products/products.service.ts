@@ -285,7 +285,6 @@ export class ProductsService {
 
     const product = await this.productModel.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after' });
     if (!product) throw new NotFoundException('Product not found');
-    console.log(`[ProductUpdate] Updated product: ${id}, new category: ${data.category}`);
     return this.formatAdminProduct(product);
   }
 
@@ -584,6 +583,10 @@ export class ProductsService {
       pricePerPiece: (p as any).pricePerPiece,
       unit: (p as any).unit,
       stock: p.stock,
+      sku: p.sku,  // ADD: SKU field
+      itemCode: (p as any).itemCode,  // ADD: Item code
+      category: (p as any).category,  // ADD: Category ObjectId
+      categoryName: (p as any).categoryName,  // ADD: Category name for display
       lowStockThreshold: (p as any).lowStockThreshold,
       rating: p.rating,
       reviews: p.reviews,
