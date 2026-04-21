@@ -31,6 +31,9 @@ export class Category {
 
   @Prop({ default: true })
   isActive: boolean;
+
+  @Prop({ default: 999 })
+  displayOrder: number;
 }
 
 export const CategorySchema = SchemaFactory.createForClass(Category);

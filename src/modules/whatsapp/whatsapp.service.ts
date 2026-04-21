@@ -373,15 +373,52 @@ export class WhatsAppService {
   async sendNewOrderAlert(phone: string, orderNumber: string, total: number): Promise<boolean> {
     const runtime = await this.getRuntimeSettings();
     const lang = (runtime as any).language || 'en';
-    
-    if (lang === 'ar') {
-      const msg = `🔔 طلب جديد\n\nرقم الطلب: *#${orderNumber}*\nالإجمالي: *${total} ريال قطري*\n\nيرجى التحقق من لوحة التحكم.`;
-      return this.sendMessage(phone, msg);
+    const arMsg = `🔔 طلب جديد\n\nرقم الطلب: *#${orderNumber}*\nالإجمالي: *${total} ريال قطري*\n\nيرجى التحقق من لوحة التحكم.`;
+    const enMsg = `🔔 *New Order!*\n\nOrder *#${orderNumber}* received.\nTotal: *${total} QAR*\n\nPlease check the admin panel.`;
+
+    const message = lang === 'ar' ? arMsg : enMsg;
+
+    // If caller requests 'admin', notify the configured admin number(s) + any additional recipients
+    if (phone && String(phone).toLowerCase() === 'admin') {
+      const recipients = new Set<string>();
+
+      // Primary admin number from DB settings (runtime) or env default
+      const primaryAdmin = runtime.whatsappNumber || this.defaultNumber;
+      if (primaryAdmin) recipients.add(primaryAdmin);
+
+      // Additional admin recipients from env var (comma/newline/semicolon separated)
+      const extraRaw = String(this.configService.get('WHATSAPP_ADMIN_RECIPIENTS', '') || this.configService.get('MESSAGING_ADMIN_NUMBERS', '') || '').trim();
+      if (extraRaw) {
+        extraRaw
+          .split(/[,;\n]+/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .forEach((r) => recipients.add(r));
+      }
+
+      const list = Array.from(recipients);
+      if (list.length === 0) {
+        // Nothing to send to
+        console.warn('⚠️ No admin WhatsApp recipients configured. Skipping admin alert.');
+        return false;
+      }
+
+      const results = await Promise.all(
+        list.map(async (r) => {
+          try {
+            return await this.sendMessage(r, message);
+          } catch (e) {
+            return false;
+          }
+        }),
+      );
+
+      const anyOk = results.some((v) => !!v);
+      if (!anyOk) console.warn('⚠️ WhatsApp new-order alert failed for all admin recipients', { recipients: list });
+      return anyOk;
     }
-    
-    return this.sendMessage(phone,
-      `🔔 *New Order!*\n\nOrder *#${orderNumber}* received.\nTotal: *${total} QAR*\n\nPlease check the admin panel.`
-    );
+
+    return this.sendMessage(phone, message);
   }
 
   async sendAdminOrderStatusUpdate(

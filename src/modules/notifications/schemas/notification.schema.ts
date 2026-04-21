@@ -25,6 +25,9 @@ export class Notification {
 
   @Prop({ enum: ['admin', 'staff', 'user', 'all'], default: 'user' })
   targetRole!: string;
+
+  @Prop({ enum: ['en', 'ar'], default: 'en' })
+  language!: string;
 }
 
 export const NotificationSchema = SchemaFactory.createForClass(Notification);

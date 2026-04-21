@@ -29,7 +29,7 @@ export class NotificationsService {
 
   async notifyAdmins(title: string, message: string, type = 'system', data: Record<string, any> = {}): Promise<void> {
     await this.notificationModel.create({
-      title, message, type, targetRole: 'admin', data,
+      title, message, type, targetRole: 'admin', language: 'ar', data,
     });
   }
 

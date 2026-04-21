@@ -31,7 +31,7 @@ export class CategoriesService {
       filter.featured = query.featured;
     }
 
-    const categories = await this.categoryModel.find(filter).sort({ name: 1 });
+    const categories = await this.categoryModel.find(filter).sort({ displayOrder: 1, name: 1 });
 
     if (!categories.length) return [];
 
