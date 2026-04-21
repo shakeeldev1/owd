@@ -94,6 +94,30 @@ export class CategoriesService {
     if (dto.name) (dto as any).slug = this.generateSlug(dto.name);
     const category = await this.categoryModel.findByIdAndUpdate(id, { $set: dto }, { returnDocument: 'after' });
     if (!category) throw new NotFoundException('Category not found');
+
+    // SYNC: Update all products that reference this category
+    // When category name/description changes, update the products' denormalized categoryName field
+    if (dto.name || dto.nameAr || dto.description || dto.descriptionAr) {
+      const productUpdateData: any = {};
+      
+      // Update categoryName field to match the new category name
+      if (dto.name) {
+        productUpdateData.categoryName = dto.name;
+      }
+      
+      // Find and update all products with this category
+      const categoryObjectId = new Types.ObjectId(id);
+      const updatedProducts = await this.productModel.updateMany(
+        { category: categoryObjectId },
+        { $set: productUpdateData }
+      );
+
+      console.log(
+        `[CategoryUpdate] Updated category "${category.name}" (ID: ${id}). ` +
+        `Synced ${updatedProducts.modifiedCount} products with new categoryName.`
+      );
+    }
+
     return { message: 'Category updated', category };
   }
 
