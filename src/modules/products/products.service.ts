@@ -119,6 +119,8 @@ export class ProductsService {
       const normalizedCategory = String(category).trim();
       const spacedCategory = normalizedCategory.replace(/[-_]+/g, ' ');
 
+      console.log(`[ProductFilter] Filter request: category="${category}" (normalized: "${normalizedCategory}")`);
+
       // Prefer filtering by the stored category ObjectId when possible.
       // This keeps shop results consistent with category product counts.
       let resolvedCategoryId: Types.ObjectId | undefined;
@@ -128,9 +130,11 @@ export class ProductsService {
         resolvedCategoryId = new Types.ObjectId(normalizedCategory);
         console.log(`[ProductFilter] Using direct ObjectId: ${resolvedCategoryId}`);
       } else {
-        // Try to resolve slug or name to ObjectId  
+        // Try to resolve slug or name to ObjectId (only active categories)
+        console.log(`[ProductFilter] Attempting to resolve category...`);
         const categoryDoc = await this.categoryModel
           .findOne({
+            isActive: true,
             $or: [
               { slug: normalizedCategory.toLowerCase() },
               { slug: spacedCategory.toLowerCase() },
@@ -140,17 +144,21 @@ export class ProductsService {
               { name: { $regex: normalizedCategory, $options: 'i' } },
             ],
           })
-          .select('_id')
+          .select('_id name slug isActive')
           .lean();
 
         if (categoryDoc?._id) {
           resolvedCategoryId = new Types.ObjectId(String(categoryDoc._id));
-          console.log(`[ProductFilter] Resolved "${normalizedCategory}" to ObjectId: ${resolvedCategoryId}`);
+          console.log(`[ProductFilter] ✅ Resolved "${normalizedCategory}" → "${categoryDoc.name}" (slug: ${categoryDoc.slug}, ID: ${resolvedCategoryId})`);
         } else {
-          console.warn(`[ProductFilter] Could not resolve category: "${normalizedCategory}". Returning all active products.`);
-          // FALLBACK: If resolution fails, don't filter by category
-          // This is better than returning 0 results
-          // Only set filter if we successfully resolved
+          console.warn(`[ProductFilter] ❌ Could not resolve category: "${normalizedCategory}". Checking what categories exist...`);
+          
+          // Debug: show all active categories
+          const allActive = await this.categoryModel
+            .find({ isActive: true })
+            .select('name slug')
+            .lean();
+          console.log(`[ProductFilter] Active categories: ${allActive.map(c => `"${c.name}" (${c.slug})`).join(', ') || 'NONE'}`);
         }
       }
 
@@ -160,7 +168,6 @@ export class ProductsService {
       } else {
         // If we couldn't resolve the category, DON'T filter
         // Return all products instead of 0 products
-        // User will see all products and can try adjusting the filter
         console.log(`[ProductFilter] No category filter applied - returning all products`);
       }
     }
