@@ -122,9 +122,28 @@ export class CategoriesService {
   }
 
   async remove(id: string) {
+    // Before deleting the category, find all products that reference it
+    const productsWithCategory = await this.productModel.find({ category: new Types.ObjectId(id) });
+
+    if (productsWithCategory.length > 0) {
+      // Remove category reference from products but keep categoryName as historical info
+      // This ensures products remain visible without a category assignment
+      await this.productModel.updateMany(
+        { category: new Types.ObjectId(id) },
+        { $unset: { category: "" } }
+      );
+
+      console.log(
+        `[CategoryDelete] Removed category reference from ${productsWithCategory.length} products. ` +
+        `Products will now display without a category assignment.`
+      );
+    }
+
+    // Now delete the category
     const category = await this.categoryModel.findByIdAndDelete(id);
     if (!category) throw new NotFoundException('Category not found');
-    return { message: 'Category deleted' };
+
+    return { message: 'Category deleted', deletedProductsCount: productsWithCategory.length };
   }
 
   async updateProductCount(slug: string, count: number) {
