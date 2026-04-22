@@ -589,6 +589,8 @@ export class ProductsService {
       pricePerQuarterTola: (p as any).pricePerQuarterTola,
       pricePerPiece: (p as any).pricePerPiece,
       unit: (p as any).unit,
+      image: p.image || '',
+      images: p.images || [],
       stock: p.stock,
       sku: p.sku,  // ADD: SKU field
       itemCode: (p as any).itemCode,  // ADD: Item code
