@@ -105,6 +105,8 @@ export class CategoriesService {
       href: `/shop?category=${c.slug}`,
       productCount: productCountsByCategoryId.get(String(c._id)) || 0,
       featured: c.featured,
+      isActive: c.isActive,
+      displayOrder: c.displayOrder ?? 999,
     }));
   }
 
