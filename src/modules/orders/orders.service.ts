@@ -1301,7 +1301,9 @@ export class OrdersService implements OnModuleInit {
     }
 
     const subtotal = dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const total = subtotal;
+    const coupon = await this.resolveOrderDiscount(dto.discountCode, subtotal);
+    const discount = coupon.discount;
+    const total = Math.max(0, subtotal - discount);
 
     const normalizedPhone = normalizePhone(dto.customerPhone || '');
     const normalizedEmail = dto.customerEmail?.trim().toLowerCase();
@@ -1349,9 +1351,11 @@ export class OrdersService implements OnModuleInit {
       },
       items: normalizedItems,
       subtotal,
+      discount,
       shippingCost: 0,
       total,
       shippingAddress,
+      discountCode: coupon.code,
       paymentMethod,
       paymentStatus,
       status: orderStatus,
@@ -1365,6 +1369,10 @@ export class OrdersService implements OnModuleInit {
 
     // Deduct stock
     await this.deductStock(dto.items);
+
+    if (coupon.offerId) {
+      await this.offerModel.findByIdAndUpdate(coupon.offerId, { $inc: { usageCount: 1 } }).catch(() => null);
+    }
 
     // If order was created from store (in‑person), mark as delivered immediately and schedule review
     if ((order.salesChannel || 'store') === 'store') {

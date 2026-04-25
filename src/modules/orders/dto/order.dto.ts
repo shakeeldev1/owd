@@ -64,6 +64,7 @@ export class AdminCreateOrderDto {
   @IsString() @IsNotEmpty() customerPhone!: string;
   @IsString() @IsOptional() customerEmail?: string;
   @IsString() @IsOptional() shippingAddress?: string;
+  @IsString() @IsOptional() discountCode?: string;
   @IsEnum(ORDER_PAYMENT_METHODS) @IsOptional() paymentMethod?: string;
   @IsEnum(ORDER_PAYMENT_STATUSES) @IsOptional() paymentStatus?: string;
   @IsEnum(ORDER_SALES_CHANNELS) @IsOptional() salesChannel?: string;
