@@ -13,12 +13,12 @@ describe('WhatsAppService', () => {
     settings?: { whatsappEnabled?: boolean; whatsappNumber?: string } | null;
   }) => {
     const configValues = {
-      WHATSAPP_API_URL: 'https://custom1.waghl.com/send-message',
-      WHATSAPP_API_KEY: 'test-key',
-      WHATSAPP_SENDER: 'AKOYA',
-      WHATSAPP_DEFAULT_NUMBER: '+97433689955',
-      WHATSAPP_ENABLED: 'true',
-      WHATSAPP_TIMEOUT_MS: '12000',
+      MESSAGING_API_URL: 'https://custom1.waghl.com/send-message',
+      MESSAGING_API_KEY: 'test-key',
+      MESSAGING_SENDER: 'AKOYA',
+      MESSAGING_DEFAULT_NUMBER: '+97433689955',
+      MESSAGING_ENABLED: 'true',
+      MESSAGING_TIMEOUT_MS: '12000',
       ...(options?.config || {}),
     };
 
@@ -88,16 +88,36 @@ describe('WhatsAppService', () => {
     const fetchMock = jest.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
     global.fetch = fetchMock as any;
 
-    const result = await service.sendMessage('+97455001122', 'Order update');
+    const result = await service.sendMessage('+97455001122', 'Order update', { mirrorToAdmin: false });
 
     expect(result).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const firstPayload = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(firstPayload).toMatchObject({
       api_key: 'test-key',
-      sender: 'AKOYA',
+      sender: '97433689955',
       number: '97455001122',
       message: 'Order update',
     });
+  });
+
+  it('sends Arabic order confirmation text', async () => {
+    const { service } = buildService({ settings: { whatsappEnabled: true, whatsappNumber: '+97455001122' } });
+
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ success: true }),
+    } as unknown as Response);
+    global.fetch = fetchMock as any;
+
+    const result = await service.sendOrderConfirmation('+97455001122', 'أحمد', 'ORD-202604-1234', 150);
+
+    expect(result).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(payload.message).toContain('فاتورة طلبك');
+    expect(payload.message).toContain('ريال قطري');
   });
 });
