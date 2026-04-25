@@ -1397,12 +1397,12 @@ export class OrdersService implements OnModuleInit {
       await this.sendPaymentReceiptAndScheduleReview(
         order,
         email,
-        normalizedPhone,
+        dto.customerPhone || '',
         dto.customerName,
       );
     } else {
       const confirmationSent = await this.whatsAppService.sendOrderConfirmation(
-        normalizedPhone,
+        dto.customerPhone || '',
         this.safeCustomerName(dto.customerName),
         order.orderNumber,
         order.total,
@@ -1843,8 +1843,8 @@ export class OrdersService implements OnModuleInit {
         order.shippingAddress,
       );
       if (!assignmentSent) this.logWhatsAppFailure('delivery assignment', order.orderNumber);
-    } catch (err) {
-      console.warn('Error sending delivery assignment WhatsApp message', err?.message || err);
+    } catch (err: any) {
+      console.warn('Error sending delivery assignment WhatsApp message', String(err));
     }
 
     const customerPhone = order.customer?.phone || '';
@@ -1858,8 +1858,8 @@ export class OrdersService implements OnModuleInit {
           staff.phone || 'Support Team',
         );
         if (!customerAssignmentSent) this.logWhatsAppFailure('customer collection notice', order.orderNumber);
-      } catch (err) {
-        console.warn('Error sending customer collection WhatsApp message', err?.message || err);
+      } catch (err: any) {
+        console.warn('Error sending customer collection WhatsApp message', String(err));
       }
     }
 
@@ -1871,8 +1871,8 @@ export class OrdersService implements OnModuleInit {
         type: 'delivery',
         data: { orderId, orderNumber: order.orderNumber },
       });
-    } catch (err) {
-      console.warn('Error creating notification for delivery staff', err?.message || err);
+    } catch (err: any) {
+      console.warn('Error creating notification for delivery staff', String(err));
     }
 
     return { message: 'Delivery staff assigned', order: this.formatOrder(updatedOrder!) };
