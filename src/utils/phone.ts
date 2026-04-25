@@ -1,5 +1,5 @@
 /**
- * Normalize a phone number to the format: +974XXXXXXXX
+ * Normalize a phone number to digits-only format: 974XXXXXXXX
  * Supports formats like:
  * - 5555 0000 (local format)
  * - +974 5555 0000 (with country code)
@@ -7,39 +7,27 @@
  */
 export function normalizePhone(phone: string): string {
   if (!phone) return '';
-  
-  // Remove spaces, dashes, and other non-digit chars (but keep + at start)
-  let normalized = phone.trim().replace(/[\s-]/g, '');
-  
-  // If starts with +974, remove the +
-  if (normalized.startsWith('+974')) {
-    normalized = normalized.slice(1);
+
+  // Remove all non-digit characters including '+'.
+  const digitsOnly = phone.trim().replace(/\D/g, '');
+
+  // Convert 00974XXXXXXXX to 974XXXXXXXX
+  if (digitsOnly.startsWith('00974')) {
+    return digitsOnly.slice(2);
   }
-  
-  // If starts with 00974, remove the 00
-  if (normalized.startsWith('00974')) {
-    normalized = normalized.slice(2);
-  }
-  
-  // Get digits only
-  const digitsOnly = normalized.replace(/\D/g, '');
-  
-  // If 8 digits (local), prepend 974
+
+  // If 8 digits (local), prepend Qatar country code
   if (digitsOnly.length === 8) {
-    return `+974${digitsOnly}`;
+    return `974${digitsOnly}`;
   }
-  
-  // If 10 digits (with 974 but no +), prepend +
-  if (digitsOnly.length === 10 && digitsOnly.startsWith('974')) {
-    return `+${digitsOnly}`;
-  }
-  
-  // If already has country code, add +
+
+  // Already international-style digits
   if (digitsOnly.length >= 10) {
-    return `+${digitsOnly}`;
+    return digitsOnly;
   }
-  
-  return `+974${digitsOnly}`;
+
+  // Fallback for short/partial input
+  return `974${digitsOnly}`;
 }
 
 /**

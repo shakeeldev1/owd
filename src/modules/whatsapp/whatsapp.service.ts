@@ -30,13 +30,13 @@ export class WhatsAppService {
     private configService: ConfigService,
     @InjectModel(Settings.name) private settingsModel: Model<SettingsDocument>,
   ) {
-    const configuredApiUrl = this.configService.get('MESSAGING_API_URL', 'https://custom1.waghl.com/send-message');
+    const configuredApiUrl = this.configService.get('MESSAGING_API_URL', 'https://custom1.waghl.com/');
     this.apiUrl = this.normalizeApiUrl(configuredApiUrl);
     this.apiKey = this.configService.get('MESSAGING_API_KEY', '');
-    this.sender = this.configService.get('MESSAGING_SENDER', '');
-    this.defaultNumber = this.configService.get('MESSAGING_DEFAULT_NUMBER', '+923207521951');
+    this.sender = this.normalizeDigits(this.configService.get('MESSAGING_SENDER', ''));
+    this.defaultNumber = this.normalizeDigits(this.configService.get('MESSAGING_DEFAULT_NUMBER', '923207521951'));
     const envEnabled = this.configService.get<string>('MESSAGING_ENABLED', 'true');
-    this.enabled = envEnabled !== 'false' && !!(this.apiUrl && this.apiKey && this.sender);
+    this.enabled = envEnabled !== 'false' && !!(this.apiUrl && this.apiKey);
     this.timeoutMs = Number(this.configService.get('MESSAGING_TIMEOUT_MS', '12000'));
     
     // Clear cache on init
@@ -44,7 +44,7 @@ export class WhatsAppService {
     this.settingsCacheAt = 0;
     
     console.log('✅ WhatsApp Service Initialized:', {
-      sender: this.sender,
+      senderFromEnv: this.sender,
       defaultNumber: this.defaultNumber,
       enabled: this.enabled,
     });
@@ -59,6 +59,10 @@ export class WhatsAppService {
     }
 
     return `${trimmed.replace(/\/+$/, '')}/send-message`;
+  }
+
+  private normalizeDigits(value: string): string {
+    return String(value || '').replace(/\D/g, '');
   }
 
   private extractDefaultCountryCode(fallbackPhone: string): string {
@@ -95,7 +99,7 @@ export class WhatsAppService {
       });
       
       return this.settingsCache;
-    } catch (err) {
+    } catch (err: any) {
       console.warn('⚠️ Error reading WhatsApp settings from DB, using defaults:', err?.message);
       const fallback = {
         whatsappEnabled: true,
@@ -123,22 +127,18 @@ export class WhatsAppService {
       digitsOnly = digitsOnly.slice(2);
     }
 
+    // Keep explicitly provided international numbers as-is.
+    // Provider requires country code with digits only (no +, no spaces).
+    if (raw.startsWith('+') || raw.startsWith('00')) {
+      return digitsOnly;
+    }
+
     // If it's 7-8 digits (local Qatar number), prepend country code
     if (digitsOnly.length <= 8) {
       return `${defaultCode}${digitsOnly}`;
     }
 
-    // If it starts with 974 (country code), use as-is
-    if (digitsOnly.startsWith('974')) {
-      return digitsOnly;
-    }
-
-    // For other numbers with 9+ digits, take the last 8 digits and prepend country code
-    if (digitsOnly.length >= 9) {
-      return `${defaultCode}${digitsOnly.slice(-8)}`;
-    }
-
-    // Otherwise return as-is (full international number)
+    // Keep already international-like numbers unchanged.
     return digitsOnly;
   }
 
@@ -149,11 +149,19 @@ export class WhatsAppService {
     return `${safeMessage.slice(0, this.maxMessageLength - 3)}...`;
   }
 
+  private resolveSender(runtime: { whatsappNumber?: string } | null): string {
+    const envSender = this.normalizeDigits(this.sender);
+    const runtimeSender = this.normalizeDigits(runtime?.whatsappNumber || '');
+    // Provider validates sender against the connected sender account.
+    // Prefer explicit env sender, then fallback to runtime/default numbers.
+    return envSender || runtimeSender || this.defaultNumber;
+  }
+
   private isValidPhone(formattedPhone: string): boolean {
     return /^\d{8,15}$/.test(formattedPhone);
   }
 
-  private async postMessage(number: string, message: string): Promise<Response> {
+  private async postMessage(number: string, message: string, sender: string): Promise<Response> {
     return fetch(this.apiUrl, {
       method: 'POST',
       headers: {
@@ -162,7 +170,7 @@ export class WhatsAppService {
       body: JSON.stringify({
         api_key: this.apiKey,
         apiKey: this.apiKey,
-        sender: this.sender,
+        sender: this.normalizeDigits(sender),
         number,
         message,
       }),
@@ -170,8 +178,9 @@ export class WhatsAppService {
     });
   }
 
-  async sendMessage(phone: string, message: string): Promise<boolean> {
+  async sendMessage(phone: string, message: string, options?: { mirrorToAdmin?: boolean }): Promise<boolean> {
     const runtime = await this.getRuntimeSettings();
+    const mirrorToAdmin = options?.mirrorToAdmin !== false;
 
     if (!runtime.whatsappEnabled) {
       console.log(`📱 [WhatsApp Disabled in Settings] To: ${phone}`);
@@ -195,10 +204,12 @@ export class WhatsAppService {
     }
 
     const fallbackPhone = runtime.whatsappNumber || this.defaultNumber;
+    const senderToUse = this.resolveSender(runtime);
     console.log('📋 WhatsApp Send Preparation:', {
       inputPhone: phone,
       isAdmin: phone?.toLowerCase() === 'admin',
       fallbackPhone,
+      senderToUse,
       runtimeWhatsappNumber: runtime.whatsappNumber,
       envDefaultNumber: this.defaultNumber,
     });
@@ -217,10 +228,10 @@ export class WhatsAppService {
     try {
       const attemptSend = async (targetPhone: string, isAdmin: boolean = false) => {
         try {
-          let resp = await this.postMessage(targetPhone, sanitizedMessage);
+          let resp = await this.postMessage(targetPhone, sanitizedMessage, senderToUse);
           if (!resp.ok && resp.status >= 500) {
             console.warn(`⚠️ Server error from WhatsApp API, retrying...`, { status: resp.status });
-            resp = await this.postMessage(targetPhone, sanitizedMessage);
+            resp = await this.postMessage(targetPhone, sanitizedMessage, senderToUse);
           }
 
           if (!resp.ok) {
@@ -274,6 +285,10 @@ export class WhatsAppService {
 
       // Send to customer phone
       const primaryOk = await attemptSend(formattedPhone, false);
+
+      if (!mirrorToAdmin) {
+        return primaryOk;
+      }
       
       // Also send to admin/store number if configured and different
       const adminRaw = runtime.whatsappNumber || this.defaultNumber;
@@ -287,7 +302,7 @@ export class WhatsAppService {
         isValid: this.isValidPhone(adminFormatted),
       });
       
-      if (adminFormatted && this.isValidPhone(adminFormatted) && adminFormatted !== formattedPhone) {
+      if (mirrorToAdmin && adminFormatted && this.isValidPhone(adminFormatted) && adminFormatted !== formattedPhone) {
         console.log(`📱 Also notifying admin/store: ${adminFormatted}`);
         adminOk = await attemptSend(adminFormatted, true);
       }
@@ -297,7 +312,7 @@ export class WhatsAppService {
         console.warn('⚠️ WhatsApp message failed to send to both customer and admin');
       } else if (!primaryOk) {
         console.warn('⚠️ WhatsApp message sent to admin only, failed for customer');
-      } else if (!adminOk && adminFormatted !== formattedPhone) {
+      } else if (mirrorToAdmin && !adminOk && adminFormatted !== formattedPhone) {
         console.warn('⚠️ WhatsApp message sent to customer, failed for admin');
       }
 
@@ -372,28 +387,33 @@ export class WhatsAppService {
   // Staff notifications
   async sendNewOrderAlert(phone: string, orderNumber: string, total: number): Promise<boolean> {
     const runtime = await this.getRuntimeSettings();
-    const lang = (runtime as any).language || 'en';
     const arMsg = `🔔 طلب جديد\n\nرقم الطلب: *#${orderNumber}*\nالإجمالي: *${total} ريال قطري*\n\nيرجى التحقق من لوحة التحكم.`;
-    const enMsg = `🔔 *New Order!*\n\nOrder *#${orderNumber}* received.\nTotal: *${total} QAR*\n\nPlease check the admin panel.`;
-
-    const message = lang === 'ar' ? arMsg : enMsg;
+    const message = arMsg;
 
     // If caller requests 'admin', notify the configured admin number(s) + any additional recipients
     if (phone && String(phone).toLowerCase() === 'admin') {
       const recipients = new Set<string>();
 
-      // Primary admin number from DB settings (runtime) or env default
-      const primaryAdmin = runtime.whatsappNumber || this.defaultNumber;
-      if (primaryAdmin) recipients.add(primaryAdmin);
-
-      // Additional admin recipients from env var (comma/newline/semicolon separated)
+      // Admin recipients from env var (comma/newline/semicolon separated)
       const extraRaw = String(this.configService.get('WHATSAPP_ADMIN_RECIPIENTS', '') || this.configService.get('MESSAGING_ADMIN_NUMBERS', '') || '').trim();
       if (extraRaw) {
         extraRaw
           .split(/[,;\n]+/)
           .map((s) => s.trim())
           .filter(Boolean)
-          .forEach((r) => recipients.add(r));
+          .forEach((r) => {
+            const formatted = this.formatPhone(r, this.defaultNumber);
+            if (formatted && this.isValidPhone(formatted)) recipients.add(formatted);
+          });
+      }
+
+      // Fallback to runtime/default admin number only when env list is empty.
+      if (recipients.size === 0) {
+        const primaryAdmin = runtime.whatsappNumber || this.defaultNumber;
+        if (primaryAdmin) {
+          const formatted = this.formatPhone(primaryAdmin, this.defaultNumber);
+          if (formatted && this.isValidPhone(formatted)) recipients.add(formatted);
+        }
       }
 
       const list = Array.from(recipients);
@@ -406,7 +426,7 @@ export class WhatsAppService {
       const results = await Promise.all(
         list.map(async (r) => {
           try {
-            return await this.sendMessage(r, message);
+            return await this.sendMessage(r, message, { mirrorToAdmin: false });
           } catch (e) {
             return false;
           }

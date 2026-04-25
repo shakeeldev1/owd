@@ -58,6 +58,10 @@ export class ChangePasswordDto {
 export class UpdateProfileDto {
   @IsString()
   @IsOptional()
+  name?: string;
+
+  @IsString()
+  @IsOptional()
   fullName?: string;
 
   @IsString()

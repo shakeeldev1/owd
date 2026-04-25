@@ -39,7 +39,14 @@ export class UsersService {
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
-    const updateData: any = { ...dto };
+    const updateData: any = {};
+
+    if (dto.fullName !== undefined) updateData.fullName = dto.fullName;
+    else if ((dto as any).name !== undefined) updateData.fullName = (dto as any).name;
+
+    if (dto.phone !== undefined) updateData.phone = dto.phone;
+    if (dto.address !== undefined) updateData.address = dto.address;
+    if (dto.avatar !== undefined) updateData.avatar = dto.avatar;
     
     // Normalize phone if being updated
     if (updateData.phone) {

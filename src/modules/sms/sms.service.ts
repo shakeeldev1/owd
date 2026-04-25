@@ -30,10 +30,10 @@ export class SMSService {
   private readonly maxMessageLength = 4096;
 
   constructor(private configService: ConfigService) {
-    this.apiUrl = this.configService.get('MESSAGING_API_URL', 'https://custom1.waghl.com/send-message');
+    this.apiUrl = this.normalizeApiUrl(this.configService.get('MESSAGING_API_URL', 'https://custom1.waghl.com/'));
     this.apiKey = this.configService.get('MESSAGING_API_KEY', '');
-    this.sender = this.configService.get('MESSAGING_SENDER', '');
-    this.mediaApiUrl = this.configService.get('MESSAGING_MEDIA_API_URL', 'https://custom1.waghl.com/send-media');
+    this.sender = this.normalizeDigits(this.configService.get('MESSAGING_SENDER', ''));
+    this.mediaApiUrl = this.normalizeMediaApiUrl(this.configService.get('MESSAGING_MEDIA_API_URL', 'https://custom1.waghl.com/send-media'));
 
     // Validate environment variables
     if (!this.apiKey || !this.sender) {
@@ -44,6 +44,24 @@ export class SMSService {
         apiUrl: this.apiUrl,
       });
     }
+  }
+
+  private normalizeApiUrl(url: string): string {
+    const trimmed = String(url || '').trim();
+    if (!trimmed) return '';
+    if (/\/send-message\/?$/i.test(trimmed)) return trimmed.replace(/\/+$/, '');
+    return `${trimmed.replace(/\/+$/, '')}/send-message`;
+  }
+
+  private normalizeMediaApiUrl(url: string): string {
+    const trimmed = String(url || '').trim();
+    if (!trimmed) return '';
+    if (/\/send-media\/?$/i.test(trimmed)) return trimmed.replace(/\/+$/, '');
+    return `${trimmed.replace(/\/+$/, '')}/send-media`;
+  }
+
+  private normalizeDigits(value: string): string {
+    return String(value || '').replace(/\D/g, '');
   }
 
   /**
@@ -77,8 +95,6 @@ export class SMSService {
 
     const variants: string[] = [];
     if (digits) variants.push(digits);
-    if (raw.startsWith('+') && digits) variants.push(`+${digits}`);
-    if (!raw.startsWith('+') && digits) variants.push(`+${digits}`);
 
     return [...new Set(variants)].filter(Boolean);
   }
@@ -165,7 +181,7 @@ export class SMSService {
           },
           body: JSON.stringify({
             api_key: this.apiKey,
-            sender: this.sender,
+            sender: this.normalizeDigits(this.sender),
             number: candidate,
             message: sanitizedMsg,
           }),
@@ -272,7 +288,7 @@ export class SMSService {
           },
           body: JSON.stringify({
             api_key: this.apiKey,
-            sender: this.sender,
+            sender: this.normalizeDigits(this.sender),
             number: candidate,
             caption,
             media_type: 'image',

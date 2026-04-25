@@ -21,6 +21,7 @@ import { User, UserDocument } from '../users/schemas/user.schema';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { Cart, CartDocument } from '../cart/schemas/cart.schema';
 import { Settings, SettingsDocument } from '../settings/settings.schema';
+import { Offer, OfferDocument } from '../offers/schemas/offer.schema';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { SMSService } from '../sms/sms.service';
 import { MailService } from '../auth/mail.service';
@@ -37,6 +38,7 @@ export class OrdersService implements OnModuleInit {
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
     @InjectModel(Cart.name) private cartModel: Model<CartDocument>,
     @InjectModel(Settings.name) private settingsModel: Model<SettingsDocument>,
+    @InjectModel(Offer.name) private offerModel: Model<OfferDocument>,
     private configService: ConfigService,
     private whatsAppService: WhatsAppService,
     private smsService: SMSService,
@@ -167,6 +169,57 @@ export class OrdersService implements OnModuleInit {
   // ─── Calculate loyalty points based on order total and customer tier ───
   private calculateLoyaltyPoints(total: number, tier: string = 'silver'): number {
     return this.loyaltyService.calculatePointsForOrder(total, tier);
+  }
+
+  private normalizeLoyaltyTier(tier?: string): 'silver' | 'gold' | 'platinum' {
+    const normalized = String(tier || '').trim().toLowerCase();
+    if (normalized === 'gold') return 'gold';
+    if (normalized === 'platinum') return 'platinum';
+    // Backward compatibility: treat legacy/unknown tiers (e.g. bronze) as silver.
+    return 'silver';
+  }
+
+  private async resolveOrderDiscount(code: string | undefined, subtotal: number): Promise<{ code: string; discount: number; offerId?: string }> {
+    const normalizedCode = String(code || '').trim().toUpperCase();
+    if (!normalizedCode) return { code: '', discount: 0 };
+
+    const now = new Date();
+    const offer = await this.offerModel.findOne({
+      code: normalizedCode,
+      isActive: true,
+      $or: [
+        { startDate: { $exists: false }, endDate: { $exists: false } },
+        { startDate: { $lte: now }, endDate: { $gte: now } },
+        { startDate: { $lte: now }, endDate: { $exists: false } },
+        { startDate: { $exists: false }, endDate: { $gte: now } },
+      ],
+    }).lean();
+
+    if (!offer) {
+      throw new BadRequestException('Invalid or expired discount code');
+    }
+
+    if (offer.usageLimit && offer.usageCount >= offer.usageLimit) {
+      throw new BadRequestException('This discount code has reached its usage limit');
+    }
+
+    if (offer.minOrder && subtotal < offer.minOrder) {
+      throw new BadRequestException(`Minimum order amount is ${offer.minOrder} QAR`);
+    }
+
+    let discount = 0;
+    if (offer.type === 'percentage') {
+      discount = (subtotal * (offer.value || 0)) / 100;
+      if (offer.maxDiscount) discount = Math.min(discount, offer.maxDiscount);
+    } else if (offer.type === 'fixed') {
+      discount = Number(offer.value || 0);
+    }
+
+    return {
+      code: normalizedCode,
+      discount: Math.max(0, Math.min(discount, subtotal)),
+      offerId: String(offer._id),
+    };
   }
 
   private isPaidStatus(status: string) {
@@ -568,8 +621,9 @@ export class OrdersService implements OnModuleInit {
     await this.validateStock(dto.items);
 
     const subtotal = dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const discountResolution = await this.resolveOrderDiscount(dto.discountCode, subtotal);
     const shippingCost = 0; // Shipping is always free
-    const total = subtotal + shippingCost;
+    const total = Math.max(0, subtotal - discountResolution.discount + shippingCost);
 
     const backendUrl = this.configService.get<string>('BACKEND_URL') || 'http://localhost:5000';
     const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
@@ -590,7 +644,7 @@ export class OrdersService implements OnModuleInit {
         items: dto.items,
         shippingAddress: dto.shippingAddress,
         paymentMethod: 'skipcash',
-        discountCode: dto.discountCode || '',
+        discountCode: discountResolution.code,
         notes: dto.notes || '',
         customer: dto.customer,
       },
@@ -1028,6 +1082,14 @@ export class OrdersService implements OnModuleInit {
       discountReason = 'First order discount (10%)';
     }
 
+    const coupon = await this.resolveOrderDiscount(dto.discountCode, subtotal);
+    if (coupon.discount > 0) {
+      discount += coupon.discount;
+      discountReason = discountReason
+        ? `${discountReason} + Coupon (${coupon.code})`
+        : `Coupon (${coupon.code})`;
+    }
+
     // Handle loyalty discount
     let loyaltyDiscount = 0;
     let loyaltyPointsUsed = 0;
@@ -1055,7 +1117,7 @@ export class OrdersService implements OnModuleInit {
     const total = Math.max(0, subtotal - discount - loyaltyDiscount + shippingCost);
     
     // Calculate loyalty points earned based on user's current tier (after discount applied)
-    const userTier = user.loyaltyTier || 'silver';
+    const userTier = this.normalizeLoyaltyTier(user.loyaltyTier);
     const loyaltyPoints = this.calculateLoyaltyPoints(total, userTier);
 
     const paymentMethod = dto.paymentMethod || 'cod';
@@ -1134,7 +1196,7 @@ export class OrdersService implements OnModuleInit {
         paymentId: dto.paymentId || '',
         paymentStatus,
         salesChannel: dto.salesChannel || 'website',
-        discountCode: dto.discountCode || '',
+        discountCode: coupon.code,
         notes: dto.notes || '',
         loyaltyPointsEarned: loyaltyPoints,
         loyaltyDiscount,
@@ -1158,6 +1220,10 @@ export class OrdersService implements OnModuleInit {
     } catch (error) {
       await this.orderModel.findByIdAndDelete(order._id).catch(() => null);
       throw error;
+    }
+
+    if (coupon.offerId) {
+      await this.offerModel.findByIdAndUpdate(coupon.offerId, { $inc: { usageCount: 1 } }).catch(() => null);
     }
 
     // Clear user cart after successful order placement

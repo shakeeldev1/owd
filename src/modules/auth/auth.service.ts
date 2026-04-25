@@ -32,6 +32,26 @@ export class AuthService {
     });
   }
 
+  private async sendVerificationOtpEmail(user: Pick<UserDocument, 'email' | 'fullName'>, otp: string): Promise<boolean> {
+    try {
+      await this.mailService.sendOtpEmail(user.email, otp, user.fullName);
+      return true;
+    } catch (error: any) {
+      console.error('❌ Verification OTP email sending failed:', error?.message || error);
+      return false;
+    }
+  }
+
+  private async sendVerificationOtpWhatsApp(fullName: string, phone: string, otp: string): Promise<boolean> {
+    try {
+      const otpMessage = `مرحباً ${fullName}\n\nرمز التحقق الخاص بك: ${otp}\nصالح لمدة 10 دقائق\n\nلا تشارك هذا الرمز مع أحد`;
+      return await this.whatsAppService.sendMessage(phone, otpMessage);
+    } catch (error: any) {
+      console.error('❌ Verification OTP WhatsApp sending failed:', error?.message || error);
+      return false;
+    }
+  }
+
   async signup(dto: SignupDto) {
     const email = dto.email.trim().toLowerCase();
     const existing = await this.userModel.findOne({ email });
@@ -54,16 +74,19 @@ export class AuthService {
       isVerified: false,
     });
 
-    // Send OTP via WhatsApp only (Arabic message)
-    const otpMessage = `مرحباً ${user.fullName}\n\nرمز التحقق الخاص بك: ${otp}\nصالح لمدة 10 دقائق\n\nلا تشارك هذا الرمز مع أحد`;
-    const whatsappSent = await this.whatsAppService.sendMessage(normalizedPhone, otpMessage).catch(() => false);
-    
-    if (!whatsappSent) {
+    // Send verification OTP through both email and WhatsApp.
+    const otpEmailSent = await this.sendVerificationOtpEmail(user, otp);
+    const otpWhatsAppSent = await this.sendVerificationOtpWhatsApp(user.fullName, normalizedPhone, otp);
+
+    if (!otpEmailSent) {
+      console.warn('⚠️ Email OTP delivery failed for new signup:', email);
+    }
+    if (!otpWhatsAppSent) {
       console.warn('⚠️ WhatsApp OTP delivery failed for new signup:', email);
     }
 
     return {
-      message: 'تم إنشاء الحساب. يرجى التحقق برمز OTP المرسل عبر WhatsApp.',
+      message: 'تم إنشاء الحساب. يرجى التحقق برمز OTP المرسل إلى بريدك الإلكتروني ورقم الواتساب.',
       email: user.email,
     };
   }
@@ -123,15 +146,17 @@ export class AuthService {
     user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
     await user.save();
 
-    // Send OTP via WhatsApp (Arabic)
-    const otpMessage = `مرحباً ${user.fullName}\n\nرمز التحقق الخاص بك: ${otp}\nصالح لمدة 10 دقائق\n\nلا تشارك هذا الرمز مع أحد`;
-    const whatsappSent = await this.whatsAppService.sendMessage(user.phone, otpMessage).catch(() => false);
-    
-    if (!whatsappSent) {
+    const otpEmailSent = await this.sendVerificationOtpEmail(user, otp);
+    const otpWhatsAppSent = await this.sendVerificationOtpWhatsApp(user.fullName, user.phone, otp);
+
+    if (!otpEmailSent) {
+      console.warn('⚠️ Email OTP resend failed for:', email);
+    }
+    if (!otpWhatsAppSent) {
       console.warn('⚠️ WhatsApp OTP resend failed for:', email);
     }
 
-    return { message: 'تم إعادة إرسال OTP عبر WhatsApp' };
+    return { message: 'تم إعادة إرسال OTP إلى بريدك الإلكتروني ورقم الواتساب' };
   }
 
   async login(dto: LoginDto) {
@@ -146,20 +171,23 @@ export class AuthService {
     }
 
     if (!user.isVerified) {
-      // Resend OTP via WhatsApp
+      // Resend verification OTP via email
       const otp = this.generateOtp();
       user.otp = otp;
       user.otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
       await user.save();
-      
-      const otpMessage = `مرحباً ${user.fullName}\n\nرمز التحقق الخاص بك: ${otp}\nصالح لمدة 10 دقائق\n\nلا تشارك هذا الرمز مع أحد`;
-      const whatsappSent = await this.whatsAppService.sendMessage(user.phone, otpMessage).catch(() => false);
-      
-      if (!whatsappSent) {
+
+      const otpEmailSent = await this.sendVerificationOtpEmail(user, otp);
+      const otpWhatsAppSent = await this.sendVerificationOtpWhatsApp(user.fullName, user.phone, otp);
+
+      if (!otpEmailSent) {
+        console.warn('⚠️ Email OTP delivery failed during login for:', user.email);
+      }
+      if (!otpWhatsAppSent) {
         console.warn('⚠️ WhatsApp OTP delivery failed during login for:', user.email);
       }
 
-      throw new UnauthorizedException('الحساب لم يتم التحقق منه. تم إرسال OTP عبر WhatsApp.');
+      throw new UnauthorizedException('الحساب لم يتم التحقق منه. تم إرسال OTP إلى بريدك الإلكتروني ورقم الواتساب.');
     }
 
     if (!user.isActive) {

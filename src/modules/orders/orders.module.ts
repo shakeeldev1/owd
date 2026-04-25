@@ -8,6 +8,7 @@ import { User, UserSchema } from '../users/schemas/user.schema';
 import { Product, ProductSchema } from '../products/schemas/product.schema';
 import { Cart, CartSchema } from '../cart/schemas/cart.schema';
 import { Settings, SettingsSchema } from '../settings/settings.schema';
+import { Offer, OfferSchema } from '../offers/schemas/offer.schema';
 import { AuthModule } from '../auth/auth.module';
 import { SMSModule } from '../sms/sms.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
@@ -21,6 +22,7 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
       { name: Product.name, schema: ProductSchema },
       { name: Cart.name, schema: CartSchema },
       { name: Settings.name, schema: SettingsSchema },
+      { name: Offer.name, schema: OfferSchema },
     ]),
     AuthModule,
     SMSModule,
