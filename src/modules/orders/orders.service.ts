@@ -1397,12 +1397,12 @@ export class OrdersService implements OnModuleInit {
       await this.sendPaymentReceiptAndScheduleReview(
         order,
         email,
-        dto.customerPhone || '',
+        normalizedPhone,
         dto.customerName,
       );
     } else {
       const confirmationSent = await this.whatsAppService.sendOrderConfirmation(
-        dto.customerPhone || '',
+        normalizedPhone,
         this.safeCustomerName(dto.customerName),
         order.orderNumber,
         order.total,

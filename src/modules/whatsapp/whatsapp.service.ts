@@ -328,11 +328,11 @@ export class WhatsAppService {
     const runtime = await this.getRuntimeSettings();
     const lang = (runtime as any).language || 'en';
     if (lang === 'ar') {
-      const msg = `🧾 فاتورة طلبك – عود الزباره\n\nشكرًا لطلبك 🌿\nتم استلام طلبك بنجاح.\n\n📦 رقم الطلب: ${orderNumber}\n\n💰 الإجمالي: ${total} ريال\n\nسيتم إشعارك بجميع التحديثات.`;
+      const msg = `🧾 تم استلام طلبك – عود الزباره\n\nشكرًا لتسوقك معنا 🌿\nتم تسجيل طلبك بنجاح وهو الآن قيد المراجعة.\n\n📦 رقم الطلب: ${orderNumber}\n💰 الإجمالي: ${total} ريال\n\nسيصلك إشعار عند أي تحديث على الطلب.`;
       return this.sendMessage(phone, msg);
     }
 
-    const msg = `🧾 Your Order Receipt – Oud Al Zubarah\n\nThank you for your order 🌿\nYour order has been received successfully.\n\n📦 Order ID: ${orderNumber}\n\n💰 Total: ${total} QAR\n\nYou will receive updates about your order.`;
+    const msg = `🧾 Order Received – Oud Al Zubarah\n\nThank you for shopping with us 🌿\nYour purchase has been placed successfully and is now under review.\n\n📦 Order ID: ${orderNumber}\n💰 Total: ${total} QAR\n\nYou will receive updates for every order status change.`;
     return this.sendMessage(phone, msg);
   }
 
@@ -387,8 +387,10 @@ export class WhatsAppService {
   // Staff notifications
   async sendNewOrderAlert(phone: string, orderNumber: string, total: number): Promise<boolean> {
     const runtime = await this.getRuntimeSettings();
-    const arMsg = `🔔 طلب جديد\n\nرقم الطلب: *#${orderNumber}*\nالإجمالي: *${total} ريال قطري*\n\nيرجى التحقق من لوحة التحكم.`;
-    const message = arMsg;
+    const lang = (runtime as any).language || 'en';
+    const message = lang === 'ar'
+      ? `🔔 عملية بيع جديدة\n\nتم تسجيل عملية بيع جديدة بنجاح.\n\nرقم الطلب: *#${orderNumber}*\nالإجمالي: *${total} ريال قطري*\n\nيرجى مراجعة الطلب من لوحة التحكم.`
+      : `🔔 New Sale Recorded\n\nA new sale has been created successfully.\n\nOrder Number: *#${orderNumber}*\nTotal: *${total} QAR*\n\nPlease review the order in the admin dashboard.`;
 
     // If caller requests 'admin', notify the configured admin number(s) + any additional recipients
     if (phone && String(phone).toLowerCase() === 'admin') {
@@ -579,11 +581,11 @@ export class WhatsAppService {
       .join('\n');
 
     if (L === 'ar') {
-      const msg = `🧾 فاتورة طلبك – عود الزباره\n\nشكرًا لطلبك 🌿\nتم استلام طلبك بنجاح.\n\n📦 رقم الطلب: ${orderNumber}\n🛍️ المنتجات:\n${lines}\n\n💰 الإجمالي: ${total} ريال\n💳 طريقة الدفع: ${paymentMethod}\n\nسيتم إشعارك بجميع التحديثات.`;
+      const msg = `🧾 إيصال الشراء – عود الزباره\n\nشكرًا لثقتك بنا 🌿\nتم تأكيد طلبك واستلام الدفع بنجاح.\n\n📦 رقم الطلب: ${orderNumber}\n🛍️ المنتجات:\n${lines}\n\n💰 الإجمالي: ${total} ريال\n💳 طريقة الدفع: ${paymentMethod}\n\nسيتم إشعارك بأي تحديثات تخص الطلب.`;
       return this.sendMessage(phone, msg);
     }
 
-    const msg = `🧾 Your Order Receipt – Oud Al Zubarah\n\nThank you for your order 🌿\nYour order has been received successfully.\n\n📦 Order ID: ${orderNumber}\n🛍️ Items:\n${lines}\n\n💰 Total: ${total} QAR\n💳 Payment Method: ${paymentMethod}\n\nYou will receive updates about your order.`;
+    const msg = `🧾 Purchase Receipt – Oud Al Zubarah\n\nThank you for your trust 🌿\nYour order has been confirmed and payment has been received successfully.\n\n📦 Order ID: ${orderNumber}\n🛍️ Items:\n${lines}\n\n💰 Total: ${total} QAR\n💳 Payment Method: ${paymentMethod}\n\nYou will receive updates for any change in order status.`;
     return this.sendMessage(phone, msg);
   }
 
