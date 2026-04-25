@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { Model, Types } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 import CryptoJS from 'crypto-js';
+import * as bcrypt from 'bcryptjs';
 import { Order, OrderDocument } from './schemas/order.schema';
 import { Review, ReviewDocument } from './schemas/review.schema';
 import {
@@ -28,6 +29,7 @@ import { MailService } from '../auth/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { convertToGrams } from '../../utils/unitConversion';
+import { normalizePhone } from '../../utils/phone';
 
 @Injectable()
 export class OrdersService implements OnModuleInit {
@@ -1294,17 +1296,48 @@ export class OrdersService implements OnModuleInit {
   async adminCreate(dto: AdminCreateOrderDto) {
     await this.validateStock(dto.items);
 
+    if (!dto.customerPhone || !dto.customerPhone.trim()) {
+      throw new BadRequestException('Customer phone is required');
+    }
+
     const subtotal = dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const total = subtotal;
 
-    const email = dto.customerEmail?.trim() || `walkin-${Date.now()}@local.customer`;
-    let user = await this.userModel.findOne({ email });
-    const userId = user?._id || new Types.ObjectId();
+    const normalizedPhone = normalizePhone(dto.customerPhone || '');
+    const normalizedEmail = dto.customerEmail?.trim().toLowerCase();
+
+    let user = normalizedPhone
+      ? await this.userModel.findOne({ phone: normalizedPhone })
+      : null;
+
+    if (!user && normalizedEmail) {
+      user = await this.userModel.findOne({ email: normalizedEmail });
+    }
+
+    if (!user) {
+      const generatedEmail = normalizedEmail || `walkin-${Date.now()}-${Math.floor(Math.random() * 10000)}@local.customer`;
+      const passwordHash = await bcrypt.hash(uuidv4(), 12);
+
+      user = await this.userModel.create({
+        fullName: dto.customerName,
+        email: generatedEmail,
+        phone: normalizedPhone,
+        password: passwordHash,
+        role: 'user',
+        isVerified: true,
+        address: '',
+      });
+    }
+
+    const userId = user._id;
+    const email = user.email;
 
     const paymentMethod = dto.paymentMethod || 'cash';
     const paymentStatus = dto.paymentStatus || (['cash', 'pos_machine', 'card_on_delivery'].includes(paymentMethod) ? 'paid' : 'pending');
     const orderStatus = this.isPaidStatus(paymentStatus) ? 'processing' : 'pending';
     const normalizedItems = this.normalizeOrderItemsForCreate(dto.items);
+    const salesChannel = dto.salesChannel || 'store';
+    const shippingAddress = salesChannel === 'store' ? '' : (dto.shippingAddress || '');
 
     const order = await this.orderModel.create({
       orderNumber: this.generateOrderNumber(),
@@ -1312,17 +1345,17 @@ export class OrdersService implements OnModuleInit {
       customer: {
         name: dto.customerName,
         email,
-        phone: dto.customerPhone || '',
+        phone: normalizedPhone,
       },
       items: normalizedItems,
       subtotal,
       shippingCost: 0,
       total,
-      shippingAddress: dto.shippingAddress,
+      shippingAddress,
       paymentMethod,
       paymentStatus,
       status: orderStatus,
-      salesChannel: dto.salesChannel || 'store',
+      salesChannel,
       paymentCompletedAt: this.isPaidStatus(paymentStatus) ? new Date() : undefined,
       statusHistory: [
         { status: 'pending', timestamp: new Date(), note: 'Admin created order' },
