@@ -21,8 +21,8 @@ export class OffersController {
 
   @Post('apply')
   @UseGuards(AuthGuard('jwt'))
-  applyDiscount(@Body() dto: ApplyDiscountDto, @Body('subtotal') subtotal: number) {
-    return this.offersService.applyDiscount(dto.code, subtotal);
+  applyDiscount(@Body() dto: ApplyDiscountDto) {
+    return this.offersService.applyDiscount(dto.code, dto.subtotal);
   }
 
   // Admin routes

@@ -179,4 +179,7 @@ export class UpdateOfferDto {
 export class ApplyDiscountDto {
   @IsString()
   code: string;
+
+  @IsNumber()
+  subtotal: number;
 }

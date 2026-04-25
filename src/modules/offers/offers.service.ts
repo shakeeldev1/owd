@@ -12,29 +12,47 @@ export class OffersService {
     return String(code || '').trim().toUpperCase();
   }
 
+  private escapeRegex(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  private isWithinOfferWindow(offer: OfferDocument, now: Date): boolean {
+    const startDate = offer.startDate ? new Date(offer.startDate) : null;
+    const endDate = offer.endDate ? new Date(offer.endDate) : null;
+
+    const hasValidStart = !!(startDate && !Number.isNaN(startDate.getTime()));
+    const hasValidEnd = !!(endDate && !Number.isNaN(endDate.getTime()));
+
+    if (!hasValidStart && !hasValidEnd) return true;
+    if (hasValidStart && hasValidEnd) return startDate! <= now && endDate! >= now;
+    if (hasValidStart) return startDate! <= now;
+    return endDate! >= now;
+  }
+
   private async resolveValidOffer(code: string, subtotal: number): Promise<OfferDocument> {
     const now = new Date();
     const normalizedCode = this.normalizeCode(code);
     if (!normalizedCode) throw new BadRequestException('Discount code is required');
 
+    const normalizedSubtotal = Number(subtotal);
+    if (!Number.isFinite(normalizedSubtotal) || normalizedSubtotal < 0) {
+      throw new BadRequestException('A valid subtotal is required');
+    }
+
     const offer = await this.offerModel.findOne({
-      code: normalizedCode,
+      code: { $regex: `^${this.escapeRegex(normalizedCode)}$`, $options: 'i' },
       isActive: true,
-      $or: [
-        { startDate: { $exists: false }, endDate: { $exists: false } },
-        { startDate: { $lte: now }, endDate: { $gte: now } },
-        { startDate: { $lte: now }, endDate: { $exists: false } },
-        { startDate: { $exists: false }, endDate: { $gte: now } },
-      ],
     });
 
-    if (!offer) throw new BadRequestException('Invalid or expired discount code');
+    if (!offer || !this.isWithinOfferWindow(offer, now)) {
+      throw new BadRequestException('Invalid or expired discount code');
+    }
 
     if (offer.usageLimit && offer.usageCount >= offer.usageLimit) {
       throw new BadRequestException('This discount code has reached its usage limit');
     }
 
-    if (offer.minOrder && subtotal < offer.minOrder) {
+    if (offer.minOrder && normalizedSubtotal < offer.minOrder) {
       throw new BadRequestException(`Minimum order amount is ${offer.minOrder} QAR`);
     }
 
@@ -151,15 +169,17 @@ export class OffersService {
   }
 
   async applyDiscount(code: string, subtotal: number): Promise<{ discount: number; offer: Offer }> {
-    const offer = await this.resolveValidOffer(code, subtotal);
-    const discount = this.calculateDiscountAmount(offer, subtotal);
+    const normalizedSubtotal = Number(subtotal);
+    const offer = await this.resolveValidOffer(code, normalizedSubtotal);
+    const discount = this.calculateDiscountAmount(offer, normalizedSubtotal);
 
     return { discount, offer };
   }
 
   async redeemDiscountCode(code: string, subtotal: number): Promise<{ discount: number; offer: Offer }> {
-    const offer = await this.resolveValidOffer(code, subtotal);
-    const discount = this.calculateDiscountAmount(offer, subtotal);
+    const normalizedSubtotal = Number(subtotal);
+    const offer = await this.resolveValidOffer(code, normalizedSubtotal);
+    const discount = this.calculateDiscountAmount(offer, normalizedSubtotal);
     await this.offerModel.findByIdAndUpdate(offer._id, { $inc: { usageCount: 1 } });
     return { discount, offer };
   }
