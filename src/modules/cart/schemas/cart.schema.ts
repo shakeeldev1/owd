@@ -26,7 +26,7 @@ export class CartItem {
   @Prop({ default: '' })
   slug: string;
 
-  @Prop({ default: 'Grams', enum: ['Grams', 'Piece', 'Tola', 'ml', 'kg'] })
+  @Prop({ default: 'Grams', enum: ['Grams', 'Piece', 'Tola', 'Quarter Tola', 'ml', 'kg'] })
   unit?: string;
 
   @Prop({ default: 0 })

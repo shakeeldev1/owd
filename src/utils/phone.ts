@@ -9,11 +9,23 @@ export function normalizePhone(phone: string): string {
   if (!phone) return '';
 
   // Remove all non-digit characters including '+'.
-  const digitsOnly = phone.trim().replace(/\D/g, '');
+  let digitsOnly = phone.trim().replace(/\D/g, '');
+
+  if (!digitsOnly) return '';
 
   // Convert 00974XXXXXXXX to 974XXXXXXXX
   if (digitsOnly.startsWith('00974')) {
-    return digitsOnly.slice(2);
+    digitsOnly = digitsOnly.slice(2);
+  }
+
+  // Convert generic international prefix 00XXXXXXXX to XXXXXX
+  if (digitsOnly.startsWith('00')) {
+    digitsOnly = digitsOnly.slice(2);
+  }
+
+  // Common local formatting: 0XXXXXXXX -> XXXXXXXX
+  if (digitsOnly.length === 9 && digitsOnly.startsWith('0')) {
+    digitsOnly = digitsOnly.slice(1);
   }
 
   // If 8 digits (local), prepend Qatar country code
@@ -22,7 +34,7 @@ export function normalizePhone(phone: string): string {
   }
 
   // Already international-style digits
-  if (digitsOnly.length >= 10) {
+  if (digitsOnly.length >= 10 && digitsOnly.length <= 15) {
     return digitsOnly;
   }
 

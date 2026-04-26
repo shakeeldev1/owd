@@ -1156,7 +1156,7 @@ export class OrdersService implements OnModuleInit {
 
     const customerName = dto.customer?.name?.trim() || user.fullName;
     const customerEmail = dto.customer?.email?.trim() || user.email;
-    const customerPhone = dto.customer?.phone?.trim() || user.phone || '';
+    const customerPhone = normalizePhone(dto.customer?.phone?.trim() || user.phone || '');
     const normalizedItems = this.normalizeOrderItemsForCreate(dto.items);
 
     // Set estimated delivery date
@@ -1523,19 +1523,41 @@ export class OrdersService implements OnModuleInit {
       }
     }
 
+    const shouldAutoMarkPaidOnDelivery = dto.status === 'delivered'
+      && order.paymentMethod === 'cod'
+      && ['pending', 'cod'].includes(order.paymentStatus);
+
+    if (shouldAutoMarkPaidOnDelivery) {
+      update.paymentStatus = 'paid';
+      update.paymentCompletedAt = new Date();
+    }
+
     // Push to status history
-    const historyEntry = {
-      status: dto.status,
-      timestamp: new Date(),
-      note: dto.notes || '',
-      updatedBy,
-    };
+    const historyEntries: Array<{ status: string; timestamp: Date; note: string; updatedBy: string }> = [
+      {
+        status: dto.status,
+        timestamp: new Date(),
+        note: dto.notes || '',
+        updatedBy,
+      },
+    ];
+
+    if (shouldAutoMarkPaidOnDelivery) {
+      historyEntries.push({
+        status: 'payment_paid',
+        timestamp: new Date(),
+        note: 'Payment auto-completed when order marked delivered',
+        updatedBy,
+      });
+    }
 
     const updatedOrder = await this.orderModel.findOneAndUpdate(
       { _id: id, status: previousStatus },
       {
         $set: update,
-        $push: { statusHistory: historyEntry },
+        $push: {
+          statusHistory: historyEntries.length === 1 ? historyEntries[0] : { $each: historyEntries },
+        },
       },
       { returnDocument: 'after' },
     );
@@ -1551,6 +1573,15 @@ export class OrdersService implements OnModuleInit {
     const customerPhone = order.customer?.phone || user?.phone || '';
     const customerEmail = order.customer?.email || user?.email || '';
     const customerName = this.safeCustomerName(order.customer?.name || user?.fullName || '');
+
+    if (shouldAutoMarkPaidOnDelivery) {
+      await this.sendPaymentReceiptAndScheduleReview(
+        updatedOrder,
+        customerEmail,
+        customerPhone,
+        customerName,
+      );
+    }
 
     // ─── Automated notifications based on status ───
     const userLanguage = (user as any)?.language || 'en';
@@ -1761,19 +1792,30 @@ export class OrdersService implements OnModuleInit {
       note: dto.notes || '',
       updatedBy,
     };
-    let updateQuery: any = {
-      $set: update,
-      $push: { statusHistory: historyEntry },
-    };
+
+    const paymentHistoryEntries: Array<{ status: string; timestamp: Date; note: string; updatedBy: string }> = [historyEntry];
     if (dto.paymentStatus === 'paid') {
       // Check if payment_paid already exists in statusHistory
       const alreadyPaid = order.statusHistory?.some((h: any) => h.status === 'payment_paid');
       if (!alreadyPaid) {
-        updateQuery.$push = {
-          $each: [historyEntry, { status: 'payment_paid', timestamp: new Date(), note: 'Payment confirmed', updatedBy }],
-        };
+        paymentHistoryEntries.push({
+          status: 'payment_paid',
+          timestamp: new Date(),
+          note: 'Payment confirmed',
+          updatedBy,
+        });
       }
     }
+
+    const updateQuery: any = {
+      $set: update,
+      $push: {
+        statusHistory: paymentHistoryEntries.length === 1
+          ? paymentHistoryEntries[0]
+          : { $each: paymentHistoryEntries },
+      },
+    };
+
     const updatedOrder = await this.orderModel.findByIdAndUpdate(
       id,
       updateQuery,
@@ -1815,20 +1857,48 @@ export class OrdersService implements OnModuleInit {
     });
     if (!staff) throw new NotFoundException('Delivery staff not found');
 
+    const now = new Date();
+    const shouldMoveToOutForDelivery = ['pending', 'confirmed', 'processing', 'ready'].includes(order.status);
+    const shouldMarkCodOnAssignment = order.paymentMethod === 'cod' && order.paymentStatus === 'pending';
+
+    const statusHistoryEntries: Array<{ status: string; timestamp: Date; note: string; updatedBy: string }> = [
+      {
+        status: 'assigned',
+        timestamp: now,
+        note: `Assigned to ${staff.fullName}`,
+        updatedBy: 'admin',
+      },
+    ];
+
+    if (shouldMoveToOutForDelivery) {
+      statusHistoryEntries.push({
+        status: 'shipped',
+        timestamp: now,
+        note: 'Order moved to out for delivery after staff assignment',
+        updatedBy: 'system',
+      });
+    }
+
+    if (shouldMarkCodOnAssignment) {
+      statusHistoryEntries.push({
+        status: 'payment_cod',
+        timestamp: now,
+        note: 'COD payment is now due on delivery',
+        updatedBy: 'system',
+      });
+    }
+
     const updatedOrder = await this.orderModel.findByIdAndUpdate(
       orderId,
       {
         $set: {
           deliveryStaff: new Types.ObjectId(dto.deliveryStaffId),
-          assignedAt: new Date(),
+          assignedAt: now,
+          ...(shouldMoveToOutForDelivery ? { status: 'shipped' } : {}),
+          ...(shouldMarkCodOnAssignment ? { paymentStatus: 'cod' } : {}),
         },
         $push: {
-          statusHistory: {
-            status: 'assigned',
-            timestamp: new Date(),
-            note: `Assigned to ${staff.fullName}`,
-            updatedBy: 'admin',
-          },
+          statusHistory: statusHistoryEntries.length === 1 ? statusHistoryEntries[0] : { $each: statusHistoryEntries },
         },
       },
       { returnDocument: 'after' },
@@ -1860,6 +1930,22 @@ export class OrdersService implements OnModuleInit {
         if (!customerAssignmentSent) this.logWhatsAppFailure('customer collection notice', order.orderNumber);
       } catch (err: any) {
         console.warn('Error sending customer collection WhatsApp message', String(err));
+      }
+
+      if (shouldMoveToOutForDelivery) {
+        try {
+          const shippedSent = await this.whatsAppService.sendOrderShipped(
+            customerPhone,
+            this.safeCustomerName(order.customer?.name || ''),
+            order.orderNumber,
+            order.trackingNumber || '',
+            staff.phone || '',
+            order.shippingAddress || '',
+          );
+          if (!shippedSent) this.logWhatsAppFailure('shipped', order.orderNumber);
+        } catch (err: any) {
+          console.warn('Error sending out-for-delivery WhatsApp message', String(err));
+        }
       }
     }
 

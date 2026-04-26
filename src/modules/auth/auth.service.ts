@@ -32,6 +32,10 @@ export class AuthService {
     });
   }
 
+  private normalizeOtpInput(value: string): string {
+    return String(value || '').trim().replace(/\s+/g, '');
+  }
+
   private async sendVerificationOtpEmail(user: Pick<UserDocument, 'email' | 'fullName'>, otp: string): Promise<boolean> {
     try {
       await this.mailService.sendOtpEmail(user.email, otp, user.fullName);
@@ -109,7 +113,9 @@ export class AuthService {
       throw new BadRequestException('OTP has expired. Please request a new one.');
     }
 
-    if (user.otp !== dto.otp) {
+    const providedOtp = this.normalizeOtpInput(dto.otp);
+    const savedOtp = this.normalizeOtpInput(String(user.otp || ''));
+    if (!providedOtp || savedOtp !== providedOtp) {
       throw new BadRequestException('Invalid OTP');
     }
 
@@ -276,7 +282,9 @@ export class AuthService {
       throw new BadRequestException('انتهت صلاحية رمز إعادة التعيين. يرجى طلب واحد جديد.');
     }
 
-    if (user.otp !== dto.otp) {
+    const providedOtp = this.normalizeOtpInput(dto.otp);
+    const savedOtp = this.normalizeOtpInput(String(user.otp || ''));
+    if (!providedOtp || savedOtp !== providedOtp) {
       throw new BadRequestException('رمز إعادة التعيين غير صحيح');
     }
 

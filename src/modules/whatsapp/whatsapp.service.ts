@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Settings, SettingsDocument } from '../settings/settings.schema';
+import { normalizePhone } from '../../utils/phone';
 
 export interface WhatsAppMessage {
   to: string;
@@ -113,32 +114,22 @@ export class WhatsAppService {
 
   private formatPhone(phone: string, fallbackPhone: string): string {
     const source = !phone || phone.toLowerCase() === 'admin' ? fallbackPhone : phone;
-    const raw = String(source).trim();
+    const raw = String(source || '').trim();
     if (!raw) return '';
 
+    const normalized = normalizePhone(raw);
+    if (this.isValidPhone(normalized)) {
+      return normalized;
+    }
+
     const defaultCode = this.extractDefaultCountryCode(fallbackPhone);
-    
-    // Remove all non-digit characters first
-    let digitsOnly = raw.replace(/\D/g, '');
+    const digitsOnly = raw.replace(/\D/g, '');
     if (!digitsOnly) return '';
 
-    // If it starts with 00, remove it (international format)
-    if (raw.startsWith('00')) {
-      digitsOnly = digitsOnly.slice(2);
-    }
-
-    // Keep explicitly provided international numbers as-is.
-    // Provider requires country code with digits only (no +, no spaces).
-    if (raw.startsWith('+') || raw.startsWith('00')) {
-      return digitsOnly;
-    }
-
-    // If it's 7-8 digits (local Qatar number), prepend country code
     if (digitsOnly.length <= 8) {
       return `${defaultCode}${digitsOnly}`;
     }
 
-    // Keep already international-like numbers unchanged.
     return digitsOnly;
   }
 
@@ -152,9 +143,9 @@ export class WhatsAppService {
   private resolveSender(runtime: { whatsappNumber?: string } | null): string {
     const envSender = this.normalizeDigits(this.sender);
     const runtimeSender = this.normalizeDigits(runtime?.whatsappNumber || '');
-    // Provider validates sender against the connected sender account.
-    // Prefer explicit env sender, then fallback to runtime/default numbers.
-    return envSender || runtimeSender || this.defaultNumber;
+    // Provider validates sender against the currently connected sender account.
+    // Prefer runtime sender from settings, then env/default fallback.
+    return runtimeSender || envSender || this.defaultNumber;
   }
 
   private isValidPhone(formattedPhone: string): boolean {
