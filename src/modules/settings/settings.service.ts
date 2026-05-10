@@ -11,6 +11,17 @@ export class SettingsService {
     private configService: ConfigService,
   ) {}
 
+  private getConfigValue(keys: string[], fallback: string): string {
+    for (const key of keys) {
+      const value = this.configService.get<string>(key, '');
+      if (value && String(value).trim()) {
+        return String(value).trim();
+      }
+    }
+
+    return fallback;
+  }
+
   async getSettings() {
     let settings = await this.settingsModel.findOne().lean();
 
@@ -47,6 +58,6 @@ export class SettingsService {
 
   async getWhatsAppApiKey(): Promise<string> {
     // Return from environment variable for security
-    return this.configService.get<string>('WHATSAPP_API_KEY') || '';
+    return this.getConfigValue(['WHATSAPP_API_KEY', 'MESSAGING_API_KEY'], '');
   }
 }

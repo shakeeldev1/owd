@@ -30,14 +30,18 @@ export class SMSService {
   private readonly maxMessageLength = 4096;
 
   constructor(private configService: ConfigService) {
-    this.apiUrl = this.normalizeApiUrl(this.configService.get('MESSAGING_API_URL', 'https://custom1.waghl.com/'));
-    this.apiKey = this.configService.get('MESSAGING_API_KEY', '');
-    this.sender = this.normalizeDigits(this.configService.get('MESSAGING_SENDER', ''));
-    this.mediaApiUrl = this.normalizeMediaApiUrl(this.configService.get('MESSAGING_MEDIA_API_URL', 'https://custom1.waghl.com/send-media'));
+    this.apiUrl = this.normalizeApiUrl(
+      this.getConfigValue(['MESSAGING_API_URL', 'WHATSAPP_API_URL', 'WHATSAPP_BASE_URL'], 'https://custom1.waghl.com/'),
+    );
+    this.apiKey = this.getConfigValue(['WHATSAPP_API_KEY', 'MESSAGING_API_KEY'], '');
+    this.sender = this.normalizeDigits(this.getConfigValue(['WHATSAPP_SENDER', 'MESSAGING_SENDER'], ''));
+    this.mediaApiUrl = this.normalizeMediaApiUrl(
+      this.getConfigValue(['MESSAGING_MEDIA_API_URL', 'WHATSAPP_MEDIA_API_URL'], 'https://custom1.waghl.com/send-media'),
+    );
 
     // Validate environment variables
     if (!this.apiKey || !this.sender) {
-      console.warn('⚠️ Messaging credentials not fully configured. Check MESSAGING_API_KEY and MESSAGING_SENDER.');
+      console.warn('⚠️ Messaging credentials not fully configured. Check WHATSAPP_API_KEY or MESSAGING_API_KEY, and WHATSAPP_SENDER or MESSAGING_SENDER.');
     } else {
       console.log('✅ SMS Service Initialized:', {
         sender: this.sender,
@@ -62,6 +66,17 @@ export class SMSService {
 
   private normalizeDigits(value: string): string {
     return String(value || '').replace(/\D/g, '');
+  }
+
+  private getConfigValue(keys: string[], fallback: string): string {
+    for (const key of keys) {
+      const value = this.configService.get<string>(key, '');
+      if (value && String(value).trim()) {
+        return String(value).trim();
+      }
+    }
+
+    return fallback;
   }
 
   /**

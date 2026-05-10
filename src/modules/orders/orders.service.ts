@@ -8,6 +8,7 @@ import CryptoJS from 'crypto-js';
 import * as bcrypt from 'bcryptjs';
 import { Order, OrderDocument } from './schemas/order.schema';
 import { Review, ReviewDocument } from './schemas/review.schema';
+import { AuditLog, AuditLogDocument } from './schemas/audit-log.schema';
 import {
   CreateOrderDto,
   AdminCreateOrderDto,
@@ -36,6 +37,7 @@ export class OrdersService implements OnModuleInit {
   constructor(
     @InjectModel(Order.name) private orderModel: Model<OrderDocument>,
     @InjectModel(Review.name) private reviewModel: Model<ReviewDocument>,
+    @InjectModel(AuditLog.name) private auditLogModel: Model<AuditLogDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
     @InjectModel(Cart.name) private cartModel: Model<CartDocument>,
@@ -755,13 +757,22 @@ export class OrdersService implements OnModuleInit {
     const providedWebhookKey = this.normalizeWebhookKey(webhookKeyHeader);
 
     if (expectedKeys.length > 0 && !expectedKeys.includes(providedWebhookKey)) {
+      console.warn('[SkipCash Webhook] Invalid webhook key provided');
       throw new BadRequestException('Invalid SkipCash webhook key');
     }
 
     const metadata = this.extractSkipCashMetadata(payload);
     const draftTokenFromMetadata = String(metadata?.draftToken || metadata?.draft_token || '');
     const orderRef = this.extractSkipCashOrderRef(payload);
+    
+    console.log('[SkipCash Webhook] Processing:', {
+      orderRef,
+      hasDraftToken: !!draftTokenFromMetadata,
+      status: payload?.status || payload?.paymentStatus || 'unknown',
+    });
+
     if (!orderRef && !draftTokenFromMetadata) {
+      console.error('[SkipCash Webhook] Missing order reference and draft token');
       throw new BadRequestException('SkipCash webhook payload missing order reference and draft token');
     }
 
@@ -855,15 +866,19 @@ export class OrdersService implements OnModuleInit {
 
     let created: any;
     try {
+      console.log('[SkipCash Webhook] Creating order from draft token for userId:', draftData.userId);
       created = await this.create(draftData.userId, {
         ...draftData.orderData,
         paymentMethod: 'skipcash',
         paymentId,
       });
+      console.log('[SkipCash Webhook] Order created successfully:', created.order?.id || created.order?.orderNumber);
     } catch (error: any) {
+      console.error('[SkipCash Webhook] Order creation failed:', error.message);
       if (this.isDuplicatePaymentIdError(error) && paymentId) {
         const existing = await this.orderModel.findOne({ paymentId, paymentMethod: 'skipcash' });
         if (existing) {
+          console.log('[SkipCash Webhook] Duplicate payment detected, returning existing order:', existing.orderNumber);
           return {
             message: 'SkipCash webhook already processed',
             status: normalizedStatus,
@@ -884,16 +899,61 @@ export class OrdersService implements OnModuleInit {
     };
   }
 
-  async deleteOrder(id: string) {
+  async deleteOrder(
+    id: string,
+    auditContext?: {
+      adminId?: string;
+      adminName?: string;
+      ipAddress?: string;
+      userAgent?: string;
+    },
+  ) {
     const order = await this.orderModel.findById(id);
     if (!order) throw new NotFoundException('Order not found');
+
+    // Save order data before deletion for audit trail
+    const deletedOrderData = {
+      orderNumber: order.orderNumber,
+      customer: order.customer,
+      total: order.total,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      paymentMethod: order.paymentMethod,
+      createdAt: order.createdAt,
+    };
 
     if (!['cancelled', 'delivered'].includes(order.status)) {
       await this.restoreStock(order.items as any);
     }
 
+    // Delete the order
     await this.orderModel.findByIdAndDelete(id);
-    return { message: 'Order deleted successfully' };
+
+    // Create audit log
+    try {
+      await this.auditLogModel.create({
+        action: 'delete',
+        entityType: 'order',
+        entityId: new Types.ObjectId(id),
+        entityNumber: order.orderNumber,
+        performedBy: auditContext?.adminId ? new Types.ObjectId(auditContext.adminId) : undefined,
+        performedByName: auditContext?.adminName || 'system',
+        changes: deletedOrderData,
+        ipAddress: auditContext?.ipAddress,
+        userAgent: auditContext?.userAgent,
+        details: `Order deleted by ${auditContext?.adminName || 'system'} - Customer: ${order.customer.name}`,
+      });
+    } catch (e) {
+      // Log audit error but don't fail the delete operation
+      console.error('Failed to create audit log for order deletion', e);
+    }
+
+    return {
+      message: 'Order deleted successfully',
+      orderNumber: order.orderNumber,
+      deletedAt: new Date(),
+      auditedBy: auditContext?.adminName || 'system',
+    };
   }
 
   private async validateStock(items: any[]) {
@@ -2269,6 +2329,60 @@ export class OrdersService implements OnModuleInit {
       .sort({ createdAt: -1 })
       .limit(limit);
     return orders.map((o) => this.formatOrder(o));
+  }
+
+  async getAuditLogs(query: { action?: string; orderId?: string; page?: number; limit?: number }) {
+    const { action, orderId, page = 1, limit = 20 } = query;
+    const filter: any = { entityType: 'order' };
+
+    if (action) filter.action = action;
+    if (orderId) filter.entityId = new Types.ObjectId(orderId);
+
+    const total = await this.auditLogModel.countDocuments(filter);
+    const logs = await this.auditLogModel
+      .find(filter)
+      .populate('performedBy', 'fullName email')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
+
+    return {
+      logs: logs.map((log) => ({
+        id: log._id,
+        action: log.action,
+        entityNumber: log.entityNumber,
+        performedBy: log.performedByName,
+        performedById: (log as any).performedBy?._id,
+        details: log.details,
+        ipAddress: log.ipAddress,
+        timestamp: log.createdAt,
+      })),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
+  }
+
+  async getOrderAuditTrail(orderId: string) {
+    const logs = await this.auditLogModel
+      .find({ entityId: new Types.ObjectId(orderId), entityType: 'order' })
+      .populate('performedBy', 'fullName email')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return {
+      orderId,
+      auditTrail: logs.map((log) => ({
+        action: log.action,
+        performedBy: log.performedByName,
+        performedByEmail: (log as any).performedBy?.email,
+        details: log.details,
+        ipAddress: log.ipAddress,
+        timestamp: log.createdAt,
+        changes: log.changes,
+      })),
+    };
   }
 
   private formatOrder(o: OrderDocument) {

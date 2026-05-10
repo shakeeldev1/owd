@@ -249,15 +249,46 @@ export class OrdersController {
   @Delete(':id')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('admin')
-  deleteOrder(@Param('id') id: string) {
-    return this.ordersService.deleteOrder(id);
+  deleteOrder(@Request() req: any, @Param('id') id: string) {
+    return this.ordersService.deleteOrder(id, {
+      adminId: req.user._id,
+      adminName: req.user.fullName || req.user.email,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
   }
 
   // Admin: Delete order (POST alias for environments where DELETE may be blocked)
   @Post(':id/delete')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('admin')
-  deleteOrderAlias(@Param('id') id: string) {
-    return this.ordersService.deleteOrder(id);
+  deleteOrderAlias(@Request() req: any, @Param('id') id: string) {
+    return this.ordersService.deleteOrder(id, {
+      adminId: req.user._id,
+      adminName: req.user.fullName || req.user.email,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent'),
+    });
+  }
+
+  // Admin: Get audit logs for orders (deletion tracking)
+  @Get('audit/logs')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin')
+  getAuditLogs(
+    @Query('action') action?: string,
+    @Query('orderId') orderId?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.ordersService.getAuditLogs({ action, orderId, page, limit });
+  }
+
+  // Admin: Get deletion history for specific order
+  @Get(':id/audit')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin')
+  getOrderAudit(@Param('id') id: string) {
+    return this.ordersService.getOrderAuditTrail(id);
   }
 }

@@ -54,7 +54,7 @@ describe('WhatsAppService', () => {
     global.fetch = jest.fn() as any;
 
     const result = await service.sendMessage('+97455001122', 'Hello');
-    expect(result).toBe(true);
+    expect(result).toBe(false);
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
@@ -99,6 +99,59 @@ describe('WhatsAppService', () => {
       number: '97455001122',
       message: 'Order update',
     });
+  });
+
+  it('preserves an alphanumeric sender id in the payload', async () => {
+    const { service } = buildService({
+      config: {
+        MESSAGING_SENDER: 'AKOYA-01',
+        MESSAGING_DEFAULT_NUMBER: '',
+      },
+      settings: { whatsappEnabled: true, whatsappNumber: '' },
+    });
+
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ success: true }),
+    } as unknown as Response);
+    global.fetch = fetchMock as any;
+
+    const result = await service.sendMessage('+97455001122', 'Order update', { mirrorToAdmin: false });
+
+    expect(result).toBe(true);
+    const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(payload.sender).toBe('AKOYA-01');
+  });
+
+  it('accepts WHATSAPP env aliases for api key and sender', async () => {
+    const { service } = buildService({
+      config: {
+        MESSAGING_API_KEY: '',
+        MESSAGING_SENDER: '',
+        MESSAGING_DEFAULT_NUMBER: '',
+        WHATSAPP_API_KEY: 'alias-key',
+        WHATSAPP_SENDER: 'ALIAS01',
+        WHATSAPP_NUMBER: '',
+      },
+      settings: { whatsappEnabled: true, whatsappNumber: '' },
+    });
+
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: async () => ({ success: true }),
+    } as unknown as Response);
+    global.fetch = fetchMock as any;
+
+    const result = await service.sendMessage('+97455001122', 'Alias test', { mirrorToAdmin: false });
+
+    expect(result).toBe(true);
+    const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(payload.api_key).toBe('alias-key');
+    expect(payload.sender).toBe('ALIAS01');
   });
 
   it('sends Arabic order confirmation text', async () => {

@@ -31,11 +31,14 @@ export class WhatsAppService {
     private configService: ConfigService,
     @InjectModel(Settings.name) private settingsModel: Model<SettingsDocument>,
   ) {
-    const configuredApiUrl = this.configService.get('MESSAGING_API_URL', 'https://custom1.waghl.com/');
+    const configuredApiUrl = this.getConfigValue(
+      ['MESSAGING_API_URL', 'WHATSAPP_API_URL', 'WHATSAPP_BASE_URL'],
+      'https://custom1.waghl.com/',
+    );
     this.apiUrl = this.normalizeApiUrl(configuredApiUrl);
-    this.apiKey = this.configService.get('MESSAGING_API_KEY', '');
-    this.sender = this.normalizeDigits(this.configService.get('MESSAGING_SENDER', ''));
-    this.defaultNumber = this.normalizeDigits(this.configService.get('MESSAGING_DEFAULT_NUMBER', '923207521951'));
+    this.apiKey = this.getConfigValue(['WHATSAPP_API_KEY', 'MESSAGING_API_KEY'], '');
+    this.sender = this.normalizeSender(this.getConfigValue(['WHATSAPP_SENDER', 'MESSAGING_SENDER'], ''));
+    this.defaultNumber = this.normalizeDigits(this.getConfigValue(['WHATSAPP_NUMBER', 'MESSAGING_DEFAULT_NUMBER'], ''));
     const envEnabled = this.configService.get<string>('MESSAGING_ENABLED', 'true');
     this.enabled = envEnabled !== 'false' && !!(this.apiUrl && this.apiKey);
     this.timeoutMs = Number(this.configService.get('MESSAGING_TIMEOUT_MS', '12000'));
@@ -64,6 +67,24 @@ export class WhatsAppService {
 
   private normalizeDigits(value: string): string {
     return String(value || '').replace(/\D/g, '');
+  }
+
+  private getConfigValue(keys: string[], fallback: string): string {
+    for (const key of keys) {
+      const value = this.configService.get<string>(key, '');
+      if (value && String(value).trim()) {
+        return String(value).trim();
+      }
+    }
+
+    return fallback;
+  }
+
+  private normalizeSender(value: string): string {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (/[a-z]/i.test(raw)) return raw;
+    return this.normalizeDigits(raw);
   }
 
   private extractDefaultCountryCode(fallbackPhone: string): string {
@@ -141,8 +162,8 @@ export class WhatsAppService {
   }
 
   private resolveSender(runtime: { whatsappNumber?: string } | null): string {
-    const envSender = this.normalizeDigits(this.sender);
-    const runtimeSender = this.normalizeDigits(runtime?.whatsappNumber || '');
+    const envSender = this.normalizeSender(this.sender);
+    const runtimeSender = this.normalizeSender(runtime?.whatsappNumber || '');
     // Provider validates sender against the currently connected sender account.
     // Prefer runtime sender from settings, then env/default fallback.
     return runtimeSender || envSender || this.defaultNumber;
@@ -160,8 +181,7 @@ export class WhatsAppService {
       },
       body: JSON.stringify({
         api_key: this.apiKey,
-        apiKey: this.apiKey,
-        sender: this.normalizeDigits(sender),
+        sender: this.normalizeSender(sender),
         number,
         message,
       }),
@@ -171,16 +191,16 @@ export class WhatsAppService {
 
   async sendMessage(phone: string, message: string, options?: { mirrorToAdmin?: boolean }): Promise<boolean> {
     const runtime = await this.getRuntimeSettings();
-    const mirrorToAdmin = options?.mirrorToAdmin !== false;
+    const mirrorToAdmin = options?.mirrorToAdmin === true;
 
     if (!runtime.whatsappEnabled) {
       console.log(`📱 [WhatsApp Disabled in Settings] To: ${phone}`);
-      return true;
+      return false;
     }
 
     if (!this.enabled) {
       console.log(`📱 [WhatsApp Disabled by Env] To: ${phone}`);
-      return true;
+      return false;
     }
 
     if (Date.now() < this.providerInactiveUntil) {
