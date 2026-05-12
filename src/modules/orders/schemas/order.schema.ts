@@ -177,10 +177,11 @@ export class Order {
 
   // Customer tier at time of order
   @Prop({ default: 'silver', enum: ['silver', 'gold', 'platinum'] })
+  loyaltyTierAtOrder!: string;
+
   // Timestamps (added by @Schema({ timestamps: true }))
   createdAt?: Date;
   updatedAt?: Date;
-  loyaltyTierAtOrder!: string;
 }
 
 export const OrderSchema = SchemaFactory.createForClass(Order);
