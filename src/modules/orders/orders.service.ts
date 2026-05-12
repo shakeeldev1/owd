@@ -968,15 +968,23 @@ export class OrdersService implements OnModuleInit {
       }
 
       const unit = (item as any).unit || (product as any).unit || 'Grams';
-      // Convert requested quantity to base inventory unit (Grams)
-      const requiredStockInGrams = convertToGrams(item.quantity, unit);
+      const inventoryType = (product as any).inventoryType || 'gram-based';
+      
+      // Convert requested quantity to base inventory unit based on inventory type
+      let requiredStock = item.quantity;
+      if (inventoryType === 'gram-based') {
+        // For gram-based: convert selling unit to grams
+        requiredStock = convertToGrams(item.quantity, unit);
+      }
+      // For piece-based: no conversion needed, quantity is already in pieces
 
       if (product.stock <= 0) {
         throw new BadRequestException(`Product "${product.name}" is out of stock`);
       }
-      if (product.stock < requiredStockInGrams) {
+      if (product.stock < requiredStock) {
+        const storageUnit = inventoryType === 'gram-based' ? 'grams' : unit.toLowerCase();
         throw new BadRequestException(
-          `Insufficient stock for "${product.name}". Available: ${product.stock} ${unit}, Requested: ${item.quantity} ${unit}`,
+          `Insufficient stock for "${product.name}". Available: ${product.stock} ${storageUnit}, Requested: ${item.quantity} ${unit}`,
         );
       }
     }
@@ -1052,8 +1060,15 @@ export class OrdersService implements OnModuleInit {
         if (!product) continue;
 
         const unit = (item as any).unit || (product as any).unit || 'Grams';
-        // Convert quantity to base inventory unit (Grams)
-        const stockToDeduct = convertToGrams(item.quantity, unit);
+        const inventoryType = (product as any).inventoryType || 'gram-based';
+        
+        // Convert quantity to base inventory unit based on inventory type
+        let stockToDeduct = item.quantity;
+        if (inventoryType === 'gram-based') {
+          // For gram-based: convert selling unit to grams
+          stockToDeduct = convertToGrams(item.quantity, unit);
+        }
+        // For piece-based: no conversion needed
 
         const updatedProduct = await this.productModel.findByIdAndUpdate(
           item.product,
@@ -1066,8 +1081,8 @@ export class OrdersService implements OnModuleInit {
         // Check low stock using per-product threshold
         if (updatedProduct) {
           const threshold = (updatedProduct as any).lowStockThreshold || 10;
-          // Get the storage unit for the alert message
-          const storageUnit = unit === 'Tola' || unit === 'kg' ? 'Grams' : unit;
+          // Determine storage unit for alert message
+          const storageUnit = inventoryType === 'gram-based' ? 'grams' : unit.toLowerCase();
           if (updatedProduct.stock <= threshold && updatedProduct.stock >= 0) {
             const alertMsg = `Product ${updatedProduct.name} is almost out of stock. Remaining quantity: ${updatedProduct.stock} ${storageUnit}.`;
             await this.notificationsService.notifyAdmins(
@@ -1094,8 +1109,15 @@ export class OrdersService implements OnModuleInit {
         if (!product) continue;
 
         const unit = (item as any).unit || (product as any).unit || 'Grams';
-        // Convert quantity to base inventory unit (Grams)
-        const stockToRestore = convertToGrams(item.quantity, unit);
+        const inventoryType = (product as any).inventoryType || 'gram-based';
+        
+        // Convert quantity to base inventory unit based on inventory type
+        let stockToRestore = item.quantity;
+        if (inventoryType === 'gram-based') {
+          // For gram-based: convert selling unit to grams
+          stockToRestore = convertToGrams(item.quantity, unit);
+        }
+        // For piece-based: no conversion needed
 
         await this.productModel.findByIdAndUpdate(item.product, {
           $inc: { stock: stockToRestore, sales: -item.quantity },

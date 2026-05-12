@@ -67,6 +67,9 @@ export class Product {
   @Prop({ default: 'Grams', enum: ['Grams', 'Piece', 'Tola', 'Quarter Tola', 'ml', 'kg'] })
   unit: string;
 
+  @Prop({ default: 'gram-based', enum: ['gram-based', 'piece-based'] })
+  inventoryType: string;
+
   @Prop({ default: 0 })
   pricePerTola: number;
 
@@ -126,6 +129,21 @@ export class Product {
 
   @Prop({ default: 0 })
   weight: number;
+
+  @Prop({ default: false })
+  isOnOffer: boolean;
+
+  @Prop({ default: 0 })
+  offerPrice: number;
+
+  @Prop({ default: 0 })
+  offerDiscountPercent: number;
+
+  @Prop({ default: null })
+  offerStartDate: Date | null;
+
+  @Prop({ default: null })
+  offerEndDate: Date | null;
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product);

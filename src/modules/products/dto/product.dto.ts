@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, IsOptional, IsBoolean, IsEnum, IsArray } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, IsOptional, IsBoolean, IsEnum, IsArray, IsDate } from 'class-validator';
 
 export class CreateProductDto {
   @IsString() @IsNotEmpty()
@@ -33,6 +33,9 @@ export class CreateProductDto {
 
   @IsString() @IsOptional()
   unit?: string;
+
+  @IsEnum(['gram-based', 'piece-based']) @IsOptional()
+  inventoryType?: string;
 
   @IsNumber() @IsOptional()
   pricePerTola?: number;
@@ -81,6 +84,21 @@ export class CreateProductDto {
 
   @IsNumber() @IsOptional()
   weight?: number;
+
+  @IsBoolean() @IsOptional()
+  isOnOffer?: boolean;
+
+  @IsNumber() @IsOptional()
+  offerPrice?: number;
+
+  @IsNumber() @IsOptional()
+  offerDiscountPercent?: number;
+
+  @IsOptional()
+  offerStartDate?: Date | null;
+
+  @IsOptional()
+  offerEndDate?: Date | null;
 }
 
 export class UpdateProductDto {
@@ -95,6 +113,7 @@ export class UpdateProductDto {
   @IsString() @IsOptional() sku?: string;
   @IsString() @IsOptional() itemCode?: string;
   @IsString() @IsOptional() unit?: string;
+  @IsEnum(['gram-based', 'piece-based']) @IsOptional() inventoryType?: string;
   @IsNumber() @IsOptional() pricePerTola?: number;
   @IsNumber() @IsOptional() pricePerQuarterTola?: number;
   @IsNumber() @IsOptional() pricePerPiece?: number;
@@ -111,6 +130,11 @@ export class UpdateProductDto {
   @IsNumber() @IsOptional() stock?: number;
   @IsEnum(['active', 'draft', 'archived']) @IsOptional() status?: string;
   @IsNumber() @IsOptional() weight?: number;
+  @IsBoolean() @IsOptional() isOnOffer?: boolean;
+  @IsNumber() @IsOptional() offerPrice?: number;
+  @IsNumber() @IsOptional() offerDiscountPercent?: number;
+  @IsOptional() offerStartDate?: Date | null;
+  @IsOptional() offerEndDate?: Date | null;
 }
 
 export class AddProductReviewDto {

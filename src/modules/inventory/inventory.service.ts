@@ -87,7 +87,7 @@ export class InventoryService {
     const total = await this.productModel.countDocuments(filter);
     const products = await this.productModel
       .find(filter)
-      .select('name nameAr sku itemCode stock price pricePerTola pricePerQuarterTola pricePerPiece unit status image sales category categoryName lowStockThreshold')
+      .select('name nameAr sku itemCode stock price pricePerTola pricePerQuarterTola pricePerPiece unit inventoryType status image sales category categoryName lowStockThreshold')
       .sort({ stock: 1 })
       .skip((page - 1) * limit)
       .limit(limit);
@@ -106,6 +106,7 @@ export class InventoryService {
         pricePerQuarterTola: (p as any).pricePerQuarterTola,
         pricePerPiece: (p as any).pricePerPiece,
         unit: (p as any).unit,
+        inventoryType: (p as any).inventoryType || 'gram-based',
         status: p.status,
         image: p.image,
         sales: p.sales,
@@ -229,15 +230,16 @@ export class InventoryService {
   async exportToExcel(): Promise<Buffer> {
     const products = await this.productModel
       .find()
-      .select('name nameAr sku stock price pricePerTola pricePerQuarterTola pricePerPiece unit status categoryName sales lowStockThreshold image')
+      .select('name nameAr sku stock price pricePerTola pricePerQuarterTola pricePerPiece unit inventoryType status categoryName sales lowStockThreshold image')
       .sort({ name: 1 });
 
-    const columnOrder = ['SKU', 'English Name', 'Arabic Name', 'Unit', 'Available Quantity', 'Price per Unit', 'Price per Tola/Quarter Tola/Piece', 'Category', 'Status', 'Sales', 'Low Stock Threshold', 'Image URL'];
+    const columnOrder = ['SKU', 'English Name', 'Arabic Name', 'Unit', 'Inventory Type', 'Available Quantity', 'Price per Unit', 'Price per Tola/Quarter Tola/Piece', 'Category', 'Status', 'Sales', 'Low Stock Threshold', 'Image URL'];
     
     const rows: any[][] = [columnOrder]; // Header row
 
     for (const p of products) {
       const unit = (p as any).unit || 'Grams';
+      const inventoryType = (p as any).inventoryType || 'gram-based';
       // Use pricePerPiece for Piece units, pricePerQuarterTola for Quarter Tola, pricePerTola for Tola/kg units
       let tierPrice = 0;
       if (unit === 'Piece' && (p as any).pricePerPiece) {
@@ -253,6 +255,7 @@ export class InventoryService {
         String(p.name || ''),
         String(p.nameAr || ''),
         String(unit),
+        String(inventoryType),
         Number(p.stock) || 0,
         Number(p.price) || 0,
         Number(tierPrice) || 0,
@@ -274,6 +277,7 @@ export class InventoryService {
       { wch: 30 }, // English Name
       { wch: 30 }, // Arabic Name
       { wch: 12 }, // Unit
+      { wch: 15 }, // Inventory Type
       { wch: 18 }, // Quantity
       { wch: 14 }, // Price per Unit
       { wch: 18 }, // Price per Tola
@@ -340,6 +344,7 @@ export class InventoryService {
       category: this.findHeaderIndex(headers, ['category', 'category name', 'الفئة']),
       sku: this.findHeaderIndex(headers, ['sku', 'product sku']),
       unit: this.findHeaderIndex(headers, ['unit', 'الوحدة']),
+      inventoryType: this.findHeaderIndex(headers, ['inventory type', 'inventory', 'نوع المخزون']),
       quantity: this.findHeaderIndex(headers, ['available quantity', 'quantity', 'stock', 'الكمية', 'المتاحة']),
       pricePerUnit: this.findHeaderIndex(headers, ['price per gram', 'price per unit', 'unit price', 'السعرلكلجرام']),
       pricePerTola: this.findHeaderIndex(headers, ['price per tola', 'price per quarter tola', 'price per piece', 'السعرلكلتولة']),
@@ -367,6 +372,8 @@ export class InventoryService {
         const category = colMap.category >= 0 ? this.parseCellString(row[colMap.category]) : '';
         const skuFromFile = colMap.sku >= 0 ? this.parseCellString(row[colMap.sku]) : '';
         const unit = colMap.unit >= 0 ? this.parseCellString(row[colMap.unit]) || 'Grams' : 'Grams';
+        const inventoryTypeRaw = colMap.inventoryType >= 0 ? this.parseCellString(row[colMap.inventoryType]).toLowerCase() : '';
+        const inventoryType = (['gram-based', 'piece-based'].includes(inventoryTypeRaw) ? inventoryTypeRaw : 'gram-based');
         const quantity = colMap.quantity >= 0 ? this.parseCellNumber(row[colMap.quantity]) : NaN;
         const pricePerUnit = colMap.pricePerUnit >= 0 ? this.parseCellNumber(row[colMap.pricePerUnit]) : NaN;
         const pricePerTola = colMap.pricePerTola >= 0 ? this.parseCellNumber(row[colMap.pricePerTola]) : NaN;
@@ -400,6 +407,7 @@ export class InventoryService {
         if (descriptionAr) updateData.descriptionAr = descriptionAr;
         if (category) updateData.categoryName = category;
         if (!isNaN(pricePerUnit) && pricePerUnit > 0) updateData.price = pricePerUnit;
+        if (inventoryType) updateData.inventoryType = inventoryType;
         
         // Handle pricePerTola/pricePerQuarterTola/pricePerPiece based on unit
         if (!isNaN(pricePerTola) && pricePerTola > 0) {
@@ -444,6 +452,7 @@ export class InventoryService {
             itemCode: itemCode,
             slug: slug || `product-${itemCode}-${Date.now()}`,
             unit: unit,
+            inventoryType: inventoryType,
             stock: !isNaN(quantity) ? Math.round(quantity * 100) / 100 : 0,
             categoryName: category,
             image: imageUrl || '',
