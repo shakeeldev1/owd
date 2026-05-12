@@ -139,10 +139,10 @@ export class Product {
   @Prop({ default: 0 })
   offerDiscountPercent: number;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, default: null })
   offerStartDate: Date | null;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, default: null })
   offerEndDate: Date | null;
 }
 
