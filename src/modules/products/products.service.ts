@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Product, ProductDocument } from './schemas/product.schema';
@@ -391,6 +391,218 @@ export class ProductsService {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=products-export-${date}.xlsx`);
     return res.send(buffer);
+  }
+
+  async generateTemplateExcel(res: any) {
+    const columnOrder = ['SKU*', 'English Name*', 'Arabic Name*', 'Category*', 'Price (QAR)*', 'Original Price (QAR)', 'Unit*', 'Weight (grams)', 'Price per Tola/Quarter Tola/Piece (QAR)', 'Stock Available*', 'Low Stock Threshold', 'Total Sales', 'Rating', 'Total Reviews', 'Main Image URL', 'All Images (comma separated)', 'English Badge', 'Arabic Badge', 'New Arrival', 'Bestseller', 'Limited Edition', 'Featured', 'Status', 'English Description*', 'Arabic Description*'];
+
+    const rows: any[][] = [columnOrder]; // Header row only
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+
+    worksheet['!cols'] = [
+      { wch: 15 },  // SKU
+      { wch: 28 },  // English Name
+      { wch: 28 },  // Arabic Name
+      { wch: 18 },  // Category
+      { wch: 14 },  // Price
+      { wch: 16 },  // Original Price
+      { wch: 12 },  // Unit
+      { wch: 14 },  // Weight
+      { wch: 18 },  // Price per Tola
+      { wch: 16 },  // Stock
+      { wch: 16 },  // Low Stock Threshold
+      { wch: 12 },  // Sales
+      { wch: 10 },  // Rating
+      { wch: 14 },  // Reviews
+      { wch: 50 },  // Main Image
+      { wch: 60 },  // All Images
+      { wch: 18 },  // Badge EN
+      { wch: 18 },  // Badge AR
+      { wch: 12 },  // New Arrival
+      { wch: 12 },  // Bestseller
+      { wch: 16 },  // Limited Edition
+      { wch: 12 },  // Featured
+      { wch: 12 },  // Status
+      { wch: 45 },  // English Description
+      { wch: 45 },  // Arabic Description
+    ];
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Products');
+
+    const buffer = Buffer.from(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', cellDates: false }));
+    const date = new Date().toISOString().split('T')[0];
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=products-template-${date}.xlsx`);
+    return res.send(buffer);
+  }
+
+  async importFromExcel(file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('No file provided');
+
+    try {
+      const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+      if (rows.length < 2) throw new BadRequestException('File must contain at least a header row and one data row');
+
+      const header = rows[0];
+      const errors: any[] = [];
+      const created: any[] = [];
+      const updated: any[] = [];
+
+      // Map both English and Arabic column names to indices
+      const columnMap: Record<string, number> = {};
+      header.forEach((col, idx) => {
+        if (!col) return;
+        const normalized = String(col).toLowerCase().trim().replace(/\*/g, '');
+        columnMap[normalized] = idx;
+      });
+
+      for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
+        const row = rows[rowIdx];
+        const rowNum = rowIdx + 1; // Excel row number (1-indexed)
+
+        try {
+          // Get values - try to find by normalized column name
+          const getSafely = (colName: string) => {
+            const normalized = colName.toLowerCase().trim().replace(/\*/g, '');
+            const idx = columnMap[normalized];
+            return idx !== undefined ? row[idx] : undefined;
+          };
+
+          // Required fields validation
+          const sku = String(getSafely('SKU') || '').trim();
+          const name = String(getSafely('English Name') || '').trim();
+          const nameAr = String(getSafely('Arabic Name') || '').trim();
+          const categoryName = String(getSafely('Category') || '').trim();
+          const priceStr = String(getSafely('Price (QAR)') || '0').trim();
+          const unitStr = String(getSafely('Unit') || 'Grams').trim();
+          const stockStr = String(getSafely('Stock Available') || '0').trim();
+          const description = String(getSafely('English Description') || '').trim();
+          const descriptionAr = String(getSafely('Arabic Description') || '').trim();
+
+          // Validation
+          if (!sku) throw new BadRequestException('SKU is required');
+          if (!name) throw new BadRequestException('English Name is required');
+          if (!nameAr) throw new BadRequestException('Arabic Name is required');
+          if (!categoryName) throw new BadRequestException('Category is required');
+          if (!description) throw new BadRequestException('English Description is required');
+          if (!descriptionAr) throw new BadRequestException('Arabic Description is required');
+
+          const price = Number(priceStr);
+          if (isNaN(price) || price < 0) throw new BadRequestException('Price must be a valid number >= 0');
+
+          const stock = Number(stockStr);
+          if (isNaN(stock) || stock < 0) throw new BadRequestException('Stock must be a valid number >= 0');
+
+          // Optional fields
+          const originalPriceStr = String(getSafely('Original Price (QAR)') || '0').trim();
+          const originalPrice = Number(originalPriceStr);
+
+          const weightStr = String(getSafely('Weight (grams)') || '0').trim();
+          const weight = Number(weightStr);
+
+          const tierPriceStr = String(getSafely('Price per Tola/Quarter Tola/Piece (QAR)') || '0').trim();
+          const tierPrice = Number(tierPriceStr);
+
+          const lowStockStr = String(getSafely('Low Stock Threshold') || '10').trim();
+          const lowStockThreshold = Number(lowStockStr);
+
+          const badge = String(getSafely('English Badge') || '').trim();
+          const badgeAr = String(getSafely('Arabic Badge') || '').trim();
+
+          const mainImage = String(getSafely('Main Image URL') || '').trim();
+          const imagesStr = String(getSafely('All Images (comma separated)') || '').trim();
+          const images = imagesStr
+            .split(';')
+            .map((s) => s.trim())
+            .filter(Boolean);
+
+          const isNewArrivalStr = String(getSafely('New Arrival') || 'No').toLowerCase().trim();
+          const isNewArrival = isNewArrivalStr === 'yes' || isNewArrivalStr === 'true' || isNewArrivalStr === '1';
+
+          const isBestsellerStr = String(getSafely('Bestseller') || 'No').toLowerCase().trim();
+          const isBestseller = isBestsellerStr === 'yes' || isBestsellerStr === 'true' || isBestsellerStr === '1';
+
+          const isLimitedStr = String(getSafely('Limited Edition') || 'No').toLowerCase().trim();
+          const isLimitedEdition = isLimitedStr === 'yes' || isLimitedStr === 'true' || isLimitedStr === '1';
+
+          const isFeaturedStr = String(getSafely('Featured') || 'No').toLowerCase().trim();
+          const isFeatured = isFeaturedStr === 'yes' || isFeaturedStr === 'true' || isFeaturedStr === '1';
+
+          const status = String(getSafely('Status') || 'active').trim().toLowerCase();
+          if (!['active', 'inactive', 'draft'].includes(status)) throw new BadRequestException('Status must be active, inactive, or draft');
+
+          // Generate slug from English name
+          const slug = name
+            .toLowerCase()
+            .replace(/\s+/g, '-')
+            .replace(/[^a-z0-9-]/g, '');
+
+          // Check if product with same SKU already exists
+          const existingProduct = await this.productModel.findOne({ sku });
+
+          const productData = {
+            sku,
+            name,
+            nameAr,
+            slug,
+            categoryName,
+            price,
+            originalPrice: originalPrice || undefined,
+            unit: unitStr,
+            weight: weight || undefined,
+            pricePerTola: tierPrice || undefined,
+            pricePerQuarterTola: tierPrice || undefined,
+            pricePerPiece: tierPrice || undefined,
+            stock,
+            lowStockThreshold: lowStockThreshold || 10,
+            image: mainImage || undefined,
+            images: images.length > 0 ? images : [],
+            description,
+            descriptionAr,
+            badge: badge || undefined,
+            badgeAr: badgeAr || undefined,
+            isNewArrival,
+            isBestseller,
+            isLimitedEdition,
+            isFeatured,
+            status,
+          };
+
+          if (existingProduct) {
+            // Update existing product
+            await this.productModel.findByIdAndUpdate(existingProduct._id, productData);
+            updated.push({ sku, name, row: rowNum });
+          } else {
+            // Create new product
+            await this.productModel.create(productData);
+            created.push({ sku, name, row: rowNum });
+          }
+        } catch (err: any) {
+          const errorMsg = err?.message || String(err);
+          errors.push({ row: rowNum, error: errorMsg });
+        }
+      }
+
+      return {
+        message: 'Import completed',
+        summary: {
+          created: created.length,
+          updated: updated.length,
+          errors: errors.length,
+        },
+        createdProducts: created,
+        updatedProducts: updated,
+        errors,
+      };
+    } catch (err: any) {
+      throw new BadRequestException(`Import failed: ${err?.message || String(err)}`);
+    }
   }
 
   async getStats() {

@@ -1,5 +1,6 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request, Res } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, Request, Res, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ProductsService } from './products.service';
 import { CreateProductDto, UpdateProductDto, AddProductReviewDto } from './dto/product.dto';
 import { RolesGuard, Roles } from '../auth/roles.guard';
@@ -71,6 +72,21 @@ export class ProductsController {
   @Roles('admin', 'staff')
   exportToExcel(@Res() res: any) {
     return this.productsService.exportToExcel(res);
+  }
+
+  @Get('admin/template')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin', 'staff')
+  getTemplate(@Res() res: any) {
+    return this.productsService.generateTemplateExcel(res);
+  }
+
+  @Post('admin/import')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('admin', 'staff')
+  @UseInterceptors(FileInterceptor('file'))
+  importFromExcel(@UploadedFile() file: Express.Multer.File) {
+    return this.productsService.importFromExcel(file);
   }
 
   @Get(':id')
