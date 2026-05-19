@@ -16,6 +16,14 @@ export class SignupDto {
   phone: string;
 
   @IsString()
+  @IsOptional()
+  country?: string;
+
+  @IsString()
+  @IsOptional()
+  region?: string;
+
+  @IsString()
   password: string;
 }
 

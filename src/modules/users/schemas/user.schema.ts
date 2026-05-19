@@ -14,6 +14,12 @@ export class User {
   @Prop({ required: true })
   phone!: string;
 
+  @Prop({ default: '' })
+  country!: string;
+
+  @Prop({ default: '' })
+  region!: string;
+
   @Prop({ required: true, select: false })
   password!: string;
 

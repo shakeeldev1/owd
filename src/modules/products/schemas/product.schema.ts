@@ -37,10 +37,10 @@ export class Product {
   @Prop({ required: true })
   nameAr: string;
 
-  @Prop({ required: true })
+  @Prop({ default: '' })
   description: string;
 
-  @Prop({ required: true })
+  @Prop({ default: '' })
   descriptionAr: string;
 
   @Prop({ required: true })
@@ -87,6 +87,9 @@ export class Product {
 
   @Prop({ default: '' })
   categoryName: string;
+
+  @Prop({ default: '' })
+  categorySlug: string;
 
   @Prop({ default: '' })
   section: string;

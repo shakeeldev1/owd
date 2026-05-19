@@ -20,22 +20,70 @@ export class ProductsService {
       .replace(/(^-|-$)/g, '');
   }
 
+  private generatePathSegment(value?: string): string {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+  }
+
+  private normalizeOfferFields(data: any): any {
+    const next: any = { ...data };
+    const isOnOffer = next.isOnOffer === true || next.isOnOffer === 'true';
+
+    if (!isOnOffer) {
+      next.isOnOffer = false;
+      next.offerPrice = 0;
+      next.offerDiscountPercent = 0;
+      next.offerStartDate = null;
+      next.offerEndDate = null;
+      return next;
+    }
+
+    const price = Number(next.price || 0);
+    const explicitOfferPrice = Number(next.offerPrice);
+    const discountPercent = Number(next.offerDiscountPercent);
+
+    let offerPrice = Number.isFinite(explicitOfferPrice) && explicitOfferPrice > 0 ? explicitOfferPrice : NaN;
+
+    if (!Number.isFinite(offerPrice) && Number.isFinite(discountPercent) && discountPercent > 0 && price > 0) {
+      offerPrice = Math.round((price * (1 - discountPercent / 100)) * 100) / 100;
+    }
+
+    if (!Number.isFinite(offerPrice) || offerPrice <= 0) {
+      throw new BadRequestException('Offer price or discount percent is required when a product is on offer');
+    }
+
+    if (price > 0 && offerPrice >= price) {
+      throw new BadRequestException('Offer price must be lower than the regular price');
+    }
+
+    next.offerPrice = Math.round(offerPrice * 100) / 100;
+
+    if (!Number.isFinite(Number(next.offerDiscountPercent)) || Number(next.offerDiscountPercent) <= 0) {
+      next.offerDiscountPercent = price > 0 ? Math.round(((price - next.offerPrice) / price) * 100) : 0;
+    }
+
+    return next;
+  }
+
   /**
    * Resolve categoryName from category ObjectId if needed
    * Ensures categoryName is always populated for filtering by category
    */
-  private async resolveCategoryName(category?: string, categoryName?: string): Promise<{ category?: string; categoryName?: string }> {
+  private async resolveCategoryName(category?: string, categoryName?: string): Promise<{ category?: string; categoryName?: string; categorySlug?: string }> {
     // If categoryName is already provided, use it as-is
     if (categoryName) {
-      return { category, categoryName };
+      return { category, categoryName, categorySlug: this.generatePathSegment(categoryName) };
     }
 
     // If category ObjectId is provided, look up the category name
     if (category && Types.ObjectId.isValid(category)) {
       try {
-        const cat = await this.categoryModel.findById(category).select('name').lean();
+        const cat = await this.categoryModel.findById(category).select('name slug').lean();
         if (cat) {
-          return { category, categoryName: cat.name };
+          return { category, categoryName: cat.name, categorySlug: this.generatePathSegment((cat as any).slug || cat.name) };
         } else {
           console.warn(`[ResolveCategoryName] Category ObjectId not found: ${category}`);
         }
@@ -46,7 +94,7 @@ export class ProductsService {
 
     // Return the category and categoryName as provided
     // Even if lookup failed, pass the ObjectId through (validation will catch if it's actually invalid)
-    return { category, categoryName };
+    return { category, categoryName, categorySlug: this.generatePathSegment(categoryName) };
   }
 
   async create(dto: CreateProductDto) {
@@ -60,7 +108,7 @@ export class ProductsService {
     }
 
     // Persist the new-arrival flag under a non-reserved schema field.
-    const data: any = { ...dto, slug };
+    const data: any = this.normalizeOfferFields({ ...dto, slug });
     if (dto.isNewArrival !== undefined) {
       data.isNewArrival = dto.isNewArrival;
       delete data.isNewArrival;
@@ -75,9 +123,10 @@ export class ProductsService {
     }
 
     // Auto-populate categoryName from category ObjectId if needed
-    const { category, categoryName } = await this.resolveCategoryName(dto.category, dto.categoryName);
+    const { category, categoryName, categorySlug } = await this.resolveCategoryName(dto.category, dto.categoryName);
     data.category = new Types.ObjectId(category);
     data.categoryName = categoryName;
+    data.categorySlug = categorySlug;
 
     const product = await this.productModel.create(data);
     console.log(`[ProductCreate] Created product: ${product._id} in category: ${category}`);
@@ -249,7 +298,7 @@ export class ProductsService {
   }
 
   async update(id: string, dto: UpdateProductDto) {
-    const data: any = { ...dto };
+    const data: any = this.normalizeOfferFields({ ...dto });
     if (dto.name) {
       data.slug = this.generateSlug(dto.name);
     }
@@ -268,20 +317,23 @@ export class ProductsService {
         throw new ConflictException(`Invalid category ObjectId: ${dto.category}`);
       }
 
-      const { category, categoryName } = await this.resolveCategoryName(dto.category, dto.categoryName);
+      const { category, categoryName, categorySlug } = await this.resolveCategoryName(dto.category, dto.categoryName);
       data.category = new Types.ObjectId(category);
       if (categoryName) {
         data.categoryName = categoryName;
+        data.categorySlug = categorySlug;
       } else if (dto.categoryName) {
         data.categoryName = dto.categoryName;
+        data.categorySlug = this.generatePathSegment(dto.categoryName);
       }
     } else if (dto.categoryName !== undefined) {
       // If only categoryName is provided, try to look up the ObjectId
       try {
-        const cat = await this.categoryModel.findOne({ name: dto.categoryName }).select('_id').lean();
+        const cat = await this.categoryModel.findOne({ name: dto.categoryName }).select('_id name slug').lean();
         if (cat) {
           data.category = new Types.ObjectId(String(cat._id));
           data.categoryName = dto.categoryName;
+          data.categorySlug = this.generatePathSegment((cat as any).slug || dto.categoryName);
         } else {
           console.warn(`[ProductUpdate] Could not find category by name: ${dto.categoryName}`);
         }
@@ -303,10 +355,10 @@ export class ProductsService {
   async exportToExcel(res: any) {
     const products = await this.productModel
       .find({ status: 'active' })
-      .select('name nameAr sku stock price originalPrice weight unit pricePerTola pricePerQuarterTola pricePerPiece lowStockThreshold image images description descriptionAr categoryName rating reviews sales badge badgeAr isNewArrival isBestseller isLimitedEdition isFeatured status')
+      .select('name nameAr sku stock price originalPrice weight unit pricePerTola pricePerQuarterTola pricePerPiece lowStockThreshold image images description descriptionAr categoryName categorySlug rating reviews sales badge badgeAr isNewArrival isBestseller isLimitedEdition isFeatured status')
       .sort({ name: 1 });
 
-    const columnOrder = ['SKU', 'English Name', 'Arabic Name', 'Category', 'Price (QAR)', 'Original Price (QAR)', 'Unit', 'Weight (grams)', 'Price per Tola/Quarter Tola/Piece (QAR)', 'Stock Available', 'Low Stock Threshold', 'Total Sales', 'Rating', 'Total Reviews', 'Main Image URL', 'All Images (comma separated)', 'English Badge', 'Arabic Badge', 'New Arrival', 'Bestseller', 'Limited Edition', 'Featured', 'Status', 'English Description', 'Arabic Description'];
+    const columnOrder = ['SKU', 'English Name', 'Arabic Name', 'Category', 'Category Slug', 'Price (QAR)', 'Original Price (QAR)', 'Unit', 'Weight (grams)', 'Price per Tola/Quarter Tola/Piece (QAR)', 'Stock Available', 'Low Stock Threshold', 'Total Sales', 'Rating', 'Total Reviews', 'Main Image URL', 'All Images (comma separated)', 'English Badge', 'Arabic Badge', 'New Arrival', 'Bestseller', 'Limited Edition', 'Featured', 'Status', 'English Description', 'Arabic Description'];
 
     const rows: any[][] = [columnOrder]; // Header row
     
@@ -327,6 +379,7 @@ export class ProductsService {
         String(p.name || ''),
         String(p.nameAr || ''),
         String(p.categoryName || ''),
+        String((p as any).categorySlug || this.generatePathSegment(p.categoryName)),
         Number(p.price) || 0,
         Number((p as any).originalPrice) || 0,
         String(unit),
@@ -360,6 +413,7 @@ export class ProductsService {
       { wch: 28 },  // English Name
       { wch: 28 },  // Arabic Name
       { wch: 18 },  // Category
+      { wch: 18 },  // Category Slug
       { wch: 14 },  // Price
       { wch: 16 },  // Original Price
       { wch: 12 },  // Unit
@@ -394,7 +448,7 @@ export class ProductsService {
   }
 
   async generateTemplateExcel(res: any) {
-    const columnOrder = ['SKU*', 'English Name*', 'Arabic Name*', 'Category*', 'Price (QAR)*', 'Original Price (QAR)', 'Unit*', 'Weight (grams)', 'Price per Tola/Quarter Tola/Piece (QAR)', 'Stock Available*', 'Low Stock Threshold', 'Total Sales', 'Rating', 'Total Reviews', 'Main Image URL', 'All Images (comma separated)', 'English Badge', 'Arabic Badge', 'New Arrival', 'Bestseller', 'Limited Edition', 'Featured', 'Status', 'English Description*', 'Arabic Description*'];
+    const columnOrder = ['SKU*', 'English Name*', 'Arabic Name*', 'Category*', 'Category Slug', 'Price (QAR)*', 'Original Price (QAR)', 'Unit*', 'Weight (grams)', 'Price per Tola/Quarter Tola/Piece (QAR)', 'Stock Available*', 'Low Stock Threshold', 'Total Sales', 'Rating', 'Total Reviews', 'Main Image URL', 'All Images (comma separated)', 'English Badge', 'Arabic Badge', 'New Arrival', 'Bestseller', 'Limited Edition', 'Featured', 'Status', 'English Description', 'Arabic Description'];
 
     const rows: any[][] = [columnOrder]; // Header row only
 
@@ -406,6 +460,7 @@ export class ProductsService {
       { wch: 28 },  // English Name
       { wch: 28 },  // Arabic Name
       { wch: 18 },  // Category
+      { wch: 18 },  // Category Slug
       { wch: 14 },  // Price
       { wch: 16 },  // Original Price
       { wch: 12 },  // Unit
@@ -482,16 +537,11 @@ export class ProductsService {
           const priceStr = String(getSafely('Price (QAR)') || '0').trim();
           const unitStr = String(getSafely('Unit') || 'Grams').trim();
           const stockStr = String(getSafely('Stock Available') || '0').trim();
-          const description = String(getSafely('English Description') || '').trim();
-          const descriptionAr = String(getSafely('Arabic Description') || '').trim();
-
           // Validation
           if (!sku) throw new BadRequestException('SKU is required');
           if (!name) throw new BadRequestException('English Name is required');
           if (!nameAr) throw new BadRequestException('Arabic Name is required');
           if (!categoryName) throw new BadRequestException('Category is required');
-          if (!description) throw new BadRequestException('English Description is required');
-          if (!descriptionAr) throw new BadRequestException('Arabic Description is required');
 
           const price = Number(priceStr);
           if (isNaN(price) || price < 0) throw new BadRequestException('Price must be a valid number >= 0');
@@ -537,6 +587,8 @@ export class ProductsService {
           const status = String(getSafely('Status') || 'active').trim().toLowerCase();
           if (!['active', 'inactive', 'draft'].includes(status)) throw new BadRequestException('Status must be active, inactive, or draft');
 
+          const categoryRecord = await this.categoryModel.findOne({ name: categoryName }).select('_id name slug').lean();
+
           // Generate slug from English name
           const slug = name
             .toLowerCase()
@@ -552,6 +604,11 @@ export class ProductsService {
             nameAr,
             slug,
             categoryName,
+            category: categoryRecord?._id ? new Types.ObjectId(String(categoryRecord._id)) : undefined,
+            categorySlug: String((categoryRecord as any)?.slug || categoryName)
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/(^-|-$)/g, ''),
             price,
             originalPrice: originalPrice || undefined,
             unit: unitStr,
@@ -563,8 +620,8 @@ export class ProductsService {
             lowStockThreshold: lowStockThreshold || 10,
             image: mainImage || undefined,
             images: images.length > 0 ? images : [],
-            description,
-            descriptionAr,
+            description: String(getSafely('English Description') || '').trim(),
+            descriptionAr: String(getSafely('Arabic Description') || '').trim(),
             badge: badge || undefined,
             badgeAr: badgeAr || undefined,
             isNewArrival,
@@ -755,10 +812,13 @@ export class ProductsService {
       image: p.image,
       images: p.images,
       slug: p.slug,
-      href: `/shop/${p.slug}`,
+      href: (p as any).categorySlug || p.categoryName
+        ? `/shop/${(p as any).categorySlug || this.generatePathSegment(p.categoryName)}/${p.slug}`
+        : `/shop/${p.slug}`,
       itemCode: (p as any).itemCode,
       category: p.category,
       categoryName: p.categoryName,
+      categorySlug: (p as any).categorySlug || this.generatePathSegment(p.categoryName),
       section: (p as any).section,
       rating: p.rating,
       reviews: p.reviews,
@@ -808,6 +868,7 @@ export class ProductsService {
       itemCode: (p as any).itemCode,  // ADD: Item code
       category: (p as any).category,  // ADD: Category ObjectId
       categoryName: (p as any).categoryName,  // ADD: Category name for display
+      categorySlug: (p as any).categorySlug || this.generatePathSegment(p.categoryName),
       lowStockThreshold: (p as any).lowStockThreshold,
       rating: p.rating,
       reviews: p.reviews,

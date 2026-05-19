@@ -7,10 +7,10 @@ export class CreateProductDto {
   @IsString() @IsNotEmpty()
   nameAr: string;
 
-  @IsString() @IsNotEmpty()
+  @IsString() @IsOptional()
   description: string;
 
-  @IsString() @IsNotEmpty()
+  @IsString() @IsOptional()
   descriptionAr: string;
 
   @IsNumber()
