@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { MailService } from '../auth/mail.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
@@ -15,6 +16,7 @@ export class UsersService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Recipient.name) private recipientModel: Model<RecipientDocument>,
     private mailService: MailService,
+    private whatsAppService: WhatsAppService,
   ) {}
 
   async getProfile(userId: string) {
@@ -236,6 +238,16 @@ export class UsersService {
       } catch (e) {
         // swallow email errors but log
         console.error('Failed to send invitation email:', e?.message || e);
+      }
+
+      // Also attempt to send invitation via WhatsApp (if phone present)
+      try {
+        if (normalizedPhone) {
+          const inviteMsg = `Hello ${user.fullName || ''}\\nYour account invitation code: ${otp}\\nValid for 10 minutes.`;
+          await this.whatsAppService.sendMessage(normalizedPhone, inviteMsg);
+        }
+      } catch (err: any) {
+        console.warn('⚠️ Failed to send invitation WhatsApp:', err?.message || err);
       }
     }
 
