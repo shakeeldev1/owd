@@ -214,8 +214,6 @@ export class AuthService {
         phone: user.phone,
         country: (user as any).country,
         region: (user as any).region,
-        country: (user as any).country,
-        region: (user as any).region,
         avatar: user.avatar,
         address: user.address,
         role: user.role,
