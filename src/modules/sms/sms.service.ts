@@ -31,12 +31,12 @@ export class SMSService {
 
   constructor(private configService: ConfigService) {
     this.apiUrl = this.normalizeApiUrl(
-      this.getConfigValue(['MESSAGING_API_URL', 'WHATSAPP_API_URL', 'WHATSAPP_BASE_URL'], 'https://custom1.waghl.com/'),
+      this.getConfigValue(['MESSAGING_API_URL', 'WHATSAPP_API_URL', 'WHATSAPP_BASE_URL'], 'https://custom2.waghl.com/'),
     );
     this.apiKey = this.getConfigValue(['WHATSAPP_API_KEY', 'MESSAGING_API_KEY'], '');
     this.sender = this.normalizeDigits(this.getConfigValue(['WHATSAPP_SENDER', 'MESSAGING_SENDER'], ''));
     this.mediaApiUrl = this.normalizeMediaApiUrl(
-      this.getConfigValue(['MESSAGING_MEDIA_API_URL', 'WHATSAPP_MEDIA_API_URL'], 'https://custom1.waghl.com/send-media'),
+      this.getConfigValue(['MESSAGING_MEDIA_API_URL', 'WHATSAPP_MEDIA_API_URL'], 'https://custom2.waghl.com/send-media'),
     );
 
     // Validate environment variables

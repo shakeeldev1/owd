@@ -33,7 +33,7 @@ export class WhatsAppService {
   ) {
     const configuredApiUrl = this.getConfigValue(
       ['MESSAGING_API_URL', 'WHATSAPP_API_URL', 'WHATSAPP_BASE_URL'],
-      'https://custom1.waghl.com/',
+      'https://custom2.waghl.com/',
     );
     this.apiUrl = this.normalizeApiUrl(configuredApiUrl);
     this.apiKey = this.getConfigValue(['WHATSAPP_API_KEY', 'MESSAGING_API_KEY'], '');
@@ -162,11 +162,15 @@ export class WhatsAppService {
   }
 
   private resolveSender(runtime: { whatsappNumber?: string } | null): string {
+    // IMPORTANT: Sender is the device token from Custom2 admin panel "View Devices" section
+    // It MUST come from .env (MESSAGING_SENDER), never from whatsappNumber
+    // The whatsappNumber is for receiving calls, NOT for sending
     const envSender = this.normalizeSender(this.sender);
-    const runtimeSender = this.normalizeSender(runtime?.whatsappNumber || '');
-    // Provider validates sender against the currently connected sender account.
-    // Prefer runtime sender from settings, then env/default fallback.
-    return runtimeSender || envSender || this.defaultNumber;
+    if (!envSender) {
+      console.warn('⚠️ WARNING: No MESSAGING_SENDER found in .env. Using fallback.');
+      return this.defaultNumber;
+    }
+    return envSender;
   }
 
   private isValidPhone(formattedPhone: string): boolean {
@@ -389,30 +393,11 @@ export class WhatsAppService {
     const enMsg = `🔔 New Request | طلب جديد\n\nOrder #${orderNumber}\nTotal: ${total} QAR\n\n📱 Check system | راجع النظام`;
     const message = enMsg;
 
-    // If caller requests 'admin', notify the configured admin number(s) + any additional recipients
+    // If caller requests 'admin', notify the configured admin number(s) from .env only
     if (phone && String(phone).toLowerCase() === 'admin') {
       const recipients = new Set<string>();
 
-      // Primary admin notification numbers (7 numbers as specified)
-      const primaryNumbers = [
-        '+974 30078915',
-        '+974 51015570',
-        '+974 50055953',
-        '+974 30736995',
-        '+974 71342310',
-        '+974 66082223',
-        '+974 33292711',
-      ];
-      
-      // Add primary numbers
-      primaryNumbers.forEach((r) => {
-        const formatted = this.formatPhone(r, this.defaultNumber);
-        if (formatted && this.isValidPhone(formatted)) {
-          recipients.add(formatted);
-        }
-      });
-
-      // Admin recipients from env var (comma/newline/semicolon separated) - additional recipients
+      // Admin recipients from env var (comma/newline/semicolon separated) - ONLY SOURCE
       const extraRaw = String(this.configService.get('WHATSAPP_ADMIN_RECIPIENTS', '') || this.configService.get('MESSAGING_ADMIN_NUMBERS', '') || '').trim();
       if (extraRaw) {
         extraRaw

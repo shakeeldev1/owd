@@ -13,7 +13,7 @@ describe('WhatsAppService', () => {
     settings?: { whatsappEnabled?: boolean; whatsappNumber?: string } | null;
   }) => {
     const configValues = {
-      MESSAGING_API_URL: 'https://custom1.waghl.com/send-message',
+      MESSAGING_API_URL: 'https://custom2.waghl.com/send-message',
       MESSAGING_API_KEY: 'test-key',
       MESSAGING_SENDER: 'AKOYA',
       MESSAGING_DEFAULT_NUMBER: '+97433689955',

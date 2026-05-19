@@ -1,0 +1,918 @@
+{
+  "info": {
+    "_postman_id": "31098be0-a4d8-43f8-a4d2-291bc1237c05",
+    "name": "custom2_enhanced_API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "16704469"
+  },
+  "item": [
+    {
+      "name": "Text Message",
+      "item": [
+        {
+          "name": "send text message",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Pre-request Script\r",
+                  "const randomString = (length) => {\r",
+                  "  const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';\r",
+                  "  let result = '';\r",
+                  "  for (let i = 0; i < length; i++) {\r",
+                  "    const randomIndex = Math.floor(Math.random() * charset.length);\r",
+                  "    result += charset[randomIndex];\r",
+                  "  }\r",
+                  "  return result;\r",
+                  "};\r",
+                  "\r",
+                  "// Generate a 10-character random string\r",
+                  "const generatedString = randomString(5);\r",
+                  "\r",
+                  "// Set the generatedString as a global variable\r",
+                  "pm.globals.set(\"generatedString\", generatedString);"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"message\": \"Hi this is {{generatedString}}\"\r\n        }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{local_base_url}}/send-message",
+              "host": [
+                "{{local_base_url}}"
+              ],
+              "path": [
+                "send-message"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Media Message",
+      "item": [
+        {
+          "name": "Image With Caption",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"caption\": \"Image from PM\",\r\n          \"media_type\":\"image\",\r\n          \"url\":\"https://www.w3schools.com/html/pic_trulli.jpg\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{local_base_url}}/send-media",
+              "host": [
+                "{{local_base_url}}"
+              ],
+              "path": [
+                "send-media"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Image With Caption",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"caption\": \"Image from PM\",\r\n          \"media_type\":\"image\",\r\n          \"url\":\"https://www.w3schools.com/html/pic_trulli.jpg\"\r\n        }",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{local_base_url}}/send-media",
+                  "host": [
+                    "{{local_base_url}}"
+                  ],
+                  "path": [
+                    "send-media"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Sun, 25 Jun 2023 09:40:30 GMT"
+                },
+                {
+                  "key": "Server",
+                  "value": "Apache/2.4.54 (Win64) OpenSSL/1.1.1q PHP/8.1.10"
+                },
+                {
+                  "key": "X-Powered-By",
+                  "value": "PHP/8.1.10"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, private"
+                },
+                {
+                  "key": "X-RateLimit-Limit",
+                  "value": "60"
+                },
+                {
+                  "key": "X-RateLimit-Remaining",
+                  "value": "59"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5, max=100"
+                },
+                {
+                  "key": "Connection",
+                  "value": "Keep-Alive"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"status\": true,\n    \"msg\": \"Message sent successfully!\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Media Pdf",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"media_type\":\"pdf\",\r\n          \"url\":\"https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf\"\r\n        }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{local_base_url}}/send-media",
+              "host": [
+                "{{local_base_url}}"
+              ],
+              "path": [
+                "send-media"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Image Without Caption",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"media_type\":\"image\",\r\n          \"url\":\"https://www.w3schools.com/html/pic_trulli.jpg\"\r\n        }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{local_base_url}}/send-media",
+              "host": [
+                "{{local_base_url}}"
+              ],
+              "path": [
+                "send-media"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Image Without Caption",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"media_type\":\"image\",\r\n          \"url\":\"https://www.w3schools.com/html/pic_trulli.jpg\"\r\n        }",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{local_base_url}}/send-media",
+                  "host": [
+                    "{{local_base_url}}"
+                  ],
+                  "path": [
+                    "send-media"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Sun, 25 Jun 2023 09:41:04 GMT"
+                },
+                {
+                  "key": "Server",
+                  "value": "Apache/2.4.54 (Win64) OpenSSL/1.1.1q PHP/8.1.10"
+                },
+                {
+                  "key": "X-Powered-By",
+                  "value": "PHP/8.1.10"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, private"
+                },
+                {
+                  "key": "X-RateLimit-Limit",
+                  "value": "60"
+                },
+                {
+                  "key": "X-RateLimit-Remaining",
+                  "value": "58"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5, max=100"
+                },
+                {
+                  "key": "Connection",
+                  "value": "Keep-Alive"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"status\": true,\n    \"msg\": \"Message sent successfully!\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Video Without Caption",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"media_type\":\"video\",\r\n          \"url\":\"https://www.w3schools.com/tags/movie.mp4\"\r\n        }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{local_base_url}}/send-media",
+              "host": [
+                "{{local_base_url}}"
+              ],
+              "path": [
+                "send-media"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Video Without Caption",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"media_type\":\"video\",\r\n          \"url\":\"https://www.w3schools.com/tags/movie.mp4\"\r\n        }",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{local_base_url}}/send-media",
+                  "host": [
+                    "{{local_base_url}}"
+                  ],
+                  "path": [
+                    "send-media"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Sun, 25 Jun 2023 09:43:21 GMT"
+                },
+                {
+                  "key": "Server",
+                  "value": "Apache/2.4.54 (Win64) OpenSSL/1.1.1q PHP/8.1.10"
+                },
+                {
+                  "key": "X-Powered-By",
+                  "value": "PHP/8.1.10"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, private"
+                },
+                {
+                  "key": "X-RateLimit-Limit",
+                  "value": "60"
+                },
+                {
+                  "key": "X-RateLimit-Remaining",
+                  "value": "58"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5, max=100"
+                },
+                {
+                  "key": "Connection",
+                  "value": "Keep-Alive"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"status\": true,\n    \"msg\": \"Message sent successfully!\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Video With Caption",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"caption\": \"Video from PM\",\r\n          \"media_type\":\"video\",\r\n          \"url\":\"https://www.w3schools.com/tags/movie.mp4\"\r\n        }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{local_base_url}}/send-media",
+              "host": [
+                "{{local_base_url}}"
+              ],
+              "path": [
+                "send-media"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Video With Caption",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"caption\": \"Video from PM\",\r\n          \"media_type\":\"video\",\r\n          \"url\":\"https://www.w3schools.com/tags/movie.mp4\"\r\n        }",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{local_base_url}}/send-media",
+                  "host": [
+                    "{{local_base_url}}"
+                  ],
+                  "path": [
+                    "send-media"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Sun, 25 Jun 2023 09:42:41 GMT"
+                },
+                {
+                  "key": "Server",
+                  "value": "Apache/2.4.54 (Win64) OpenSSL/1.1.1q PHP/8.1.10"
+                },
+                {
+                  "key": "X-Powered-By",
+                  "value": "PHP/8.1.10"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, private"
+                },
+                {
+                  "key": "X-RateLimit-Limit",
+                  "value": "60"
+                },
+                {
+                  "key": "X-RateLimit-Remaining",
+                  "value": "59"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5, max=100"
+                },
+                {
+                  "key": "Connection",
+                  "value": "Keep-Alive"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"status\": true,\n    \"msg\": \"Message sent successfully!\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Audio Message",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"media_type\":\"audio\",\r\n          \"url\":\"https://app1.waghl.com/public/customers/app/locations/media/2/BAE557E2840B58D0.opus\",\r\n          \"ptt\":true\r\n        }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{local_base_url}}/send-media",
+              "host": [
+                "{{local_base_url}}"
+              ],
+              "path": [
+                "send-media"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Audio Message",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"media_type\":\"audio\",\r\n          \"url\":\"https://www.w3schools.com/html/horse.ogg\",\r\n          \"ptt\":true\r\n        }",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{local_base_url}}/send-media",
+                  "host": [
+                    "{{local_base_url}}"
+                  ],
+                  "path": [
+                    "send-media"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Sun, 25 Jun 2023 09:50:51 GMT"
+                },
+                {
+                  "key": "Server",
+                  "value": "Apache/2.4.54 (Win64) OpenSSL/1.1.1q PHP/8.1.10"
+                },
+                {
+                  "key": "X-Powered-By",
+                  "value": "PHP/8.1.10"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, private"
+                },
+                {
+                  "key": "X-RateLimit-Limit",
+                  "value": "60"
+                },
+                {
+                  "key": "X-RateLimit-Remaining",
+                  "value": "58"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5, max=100"
+                },
+                {
+                  "key": "Connection",
+                  "value": "Keep-Alive"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"status\": true,\n    \"msg\": \"Message sent successfully!\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Audio voice note",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n\t\"api_key\": \"{{api_key}}\",\r\n\t\"sender\": \"{{sender}}\",\r\n\t\"number\": \"{{number}}\",\r\n\t\"media_type\": \"audio\",\r\n\t\"url\": \"\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{local_base_url}}/send-media",
+              "host": [
+                "{{local_base_url}}"
+              ],
+              "path": [
+                "send-media"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Documents Message",
+      "item": [
+        {
+          "name": "Documents like pdf,csv,xls",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"media_type\":\"document\",\r\n          \"url\":\"https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf\"\r\n        }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{local_base_url}}/send-document",
+              "host": [
+                "{{local_base_url}}"
+              ],
+              "path": [
+                "send-document"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "PDF",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"media_type\":\"document\",\r\n          \"url\":\"https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf\"\r\n        }",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{local_base_url}}/send-document",
+                  "host": [
+                    "{{local_base_url}}"
+                  ],
+                  "path": [
+                    "send-document"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Sun, 25 Jun 2023 12:53:38 GMT"
+                },
+                {
+                  "key": "Server",
+                  "value": "Apache/2.4.54 (Win64) OpenSSL/1.1.1q PHP/8.1.10"
+                },
+                {
+                  "key": "X-Powered-By",
+                  "value": "PHP/8.1.10"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, private"
+                },
+                {
+                  "key": "X-RateLimit-Limit",
+                  "value": "60"
+                },
+                {
+                  "key": "X-RateLimit-Remaining",
+                  "value": "59"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5, max=100"
+                },
+                {
+                  "key": "Connection",
+                  "value": "Keep-Alive"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"status\": true,\n    \"msg\": \"Message sent successfully!\"\n}"
+            },
+            {
+              "name": "Image as a Document",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"media_type\":\"document\",\r\n          \"url\":\"https://www.w3schools.com/html/pic_trulli.jpg\"\r\n        }",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{local_base_url}}/send-document",
+                  "host": [
+                    "{{local_base_url}}"
+                  ],
+                  "path": [
+                    "send-document"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Sun, 25 Jun 2023 12:59:54 GMT"
+                },
+                {
+                  "key": "Server",
+                  "value": "Apache/2.4.54 (Win64) OpenSSL/1.1.1q PHP/8.1.10"
+                },
+                {
+                  "key": "X-Powered-By",
+                  "value": "PHP/8.1.10"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, private"
+                },
+                {
+                  "key": "X-RateLimit-Limit",
+                  "value": "60"
+                },
+                {
+                  "key": "X-RateLimit-Remaining",
+                  "value": "59"
+                },
+                {
+                  "key": "Keep-Alive",
+                  "value": "timeout=5, max=100"
+                },
+                {
+                  "key": "Connection",
+                  "value": "Keep-Alive"
+                },
+                {
+                  "key": "Transfer-Encoding",
+                  "value": "chunked"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"status\": true,\n    \"msg\": \"Message sent successfully!\"\n}"
+            },
+            {
+              "name": "Documents with caption",
+              "originalRequest": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": " {\r\n          \"api_key\": \"{{api_key}}\",\r\n          \"sender\": \"{{sender}}\",\r\n          \"number\": \"{{number}}\",\r\n          \"caption\":\"caption\",\r\n          \"media_type\":\"document\",\r\n          \"url\":\"https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf\"\r\n        }",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{local_base_url}}/send-document",
+                  "host": [
+                    "{{local_base_url}}"
+                  ],
+                  "path": [
+                    "send-document"
+                  ]
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [
+                {
+                  "key": "Date",
+                  "value": "Wed, 05 Jul 2023 11:27:47 GMT"
+                },
+                {
+                  "key": "Server",
+                  "value": "Apache"
+                },
+                {
+                  "key": "Cache-Control",
+                  "value": "no-cache, private"
+                },
+                {
+                  "key": "X-RateLimit-Limit",
+                  "value": "60"
+                },
+                {
+                  "key": "X-RateLimit-Remaining",
+                  "value": "59"
+                },
+                {
+                  "key": "Vary",
+                  "value": "Accept-Encoding"
+                },
+                {
+                  "key": "Content-Encoding",
+                  "value": "gzip"
+                },
+                {
+                  "key": "Content-Length",
+                  "value": "68"
+                },
+                {
+                  "key": "Connection",
+                  "value": "close"
+                },
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "cookie": [],
+              "body": "{\n    \"status\": true,\n    \"msg\": \"Message sent successfully!\"\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "api_key",
+      "value": "YOUR_APIKEY",
+      "type": "default"
+    },
+    {
+      "key": "sender",
+      "value": "SENDER",
+      "type": "default"
+    },
+    {
+      "key": "local_base_url",
+      "value": "https://domainname.com",
+      "type": "default"
+    },
+    {
+      "key": "number",
+      "value": "TO_NUMBER",
+      "type": "default"
+    }
+  ]
+}
