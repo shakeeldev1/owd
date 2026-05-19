@@ -484,6 +484,22 @@ export class InventoryService {
         'stock',
         { items: lowStockAlerts },
       );
+
+      // Send WhatsApp alerts for each low stock item
+      for (const alert of lowStockAlerts) {
+        // Extract product name and stock from alert string
+        const match = alert.match(/^(.+?)\s*\((\d+)\s/);
+        if (match) {
+          const productName = match[1];
+          const stock = parseInt(match[2], 10);
+          try {
+            this.whatsAppService.sendLowStockAlert('admin', productName, stock);
+          } catch (e) {
+            console.warn(`⚠️ Failed to send WhatsApp low stock alert for ${productName}:`, e);
+          }
+        }
+      }
+
       // Send email alert for imported low stock items
       try {
         await this.mailService.sendLowStockBulkAlert(lowStockAlerts);

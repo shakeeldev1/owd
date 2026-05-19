@@ -1725,6 +1725,22 @@ export class OrdersService implements OnModuleInit {
           const deliveredSent = await this.whatsAppService.sendOrderDelivered(customerPhone, customerName, order.orderNumber);
           if (!deliveredSent) this.logWhatsAppFailure('delivered', order.orderNumber);
 
+          // Send delivery receipt via WhatsApp with order items and total
+          try {
+            const paymentLabel = order.paymentMethod.replace(/_/g, ' ');
+            const receiptSent = await this.whatsAppService.sendDeliveryReceipt(
+              customerPhone,
+              customerName,
+              order.orderNumber,
+              order.total,
+              paymentLabel,
+              order.items as any,
+            );
+            if (!receiptSent) this.logWhatsAppFailure('delivery receipt', order.orderNumber);
+          } catch (err: any) {
+            console.warn('⚠️ Error sending delivery receipt via WhatsApp:', String(err));
+          }
+
           // Send SMS delivered notification
           const smsSent = await this.smsService.sendOrderStatusUpdateSMS(
             customerPhone,
@@ -1797,6 +1813,17 @@ export class OrdersService implements OnModuleInit {
         {
           const cancelledSent = await this.whatsAppService.sendOrderCancelled(customerPhone, customerName, order.orderNumber);
           if (!cancelledSent) this.logWhatsAppFailure('cancelled', order.orderNumber);
+
+          // Send SMS cancellation notification
+          const smsSent = await this.smsService.sendOrderStatusUpdateSMS(
+            customerPhone,
+            customerName,
+            order,
+            'cancelled',
+          );
+          if (!smsSent.success) {
+            console.warn('⚠️ SMS cancellation notification failed:', smsSent.error);
+          }
         }
         // Restore stock
         await this.restoreStock(order.items);
@@ -1995,6 +2022,16 @@ export class OrdersService implements OnModuleInit {
         order.shippingAddress,
       );
       if (!assignmentSent) this.logWhatsAppFailure('delivery assignment', order.orderNumber);
+
+      // Also send SMS to delivery staff
+      const smsSent = await this.smsService.sendSMS(
+        staff.phone,
+        `📦 New Delivery Assignment\n\nHello ${staff.fullName},\n\nYou have been assigned to deliver Order #${order.orderNumber}.\n\nDelivery Address: ${order.shippingAddress}\n\nPlease update the status after delivery.\n\nThank you!`,
+        { orderId: order._id.toString(), orderNumber: order.orderNumber },
+      );
+      if (!smsSent.success) {
+        console.warn('⚠️ SMS delivery assignment notification to staff failed:', smsSent.error);
+      }
     } catch (err: any) {
       console.warn('Error sending delivery assignment WhatsApp message', String(err));
     }
@@ -2010,6 +2047,16 @@ export class OrdersService implements OnModuleInit {
           staff.phone || 'Support Team',
         );
         if (!customerAssignmentSent) this.logWhatsAppFailure('customer collection notice', order.orderNumber);
+
+        // Also send SMS to customer about collection notice
+        const customerSmsSent = await this.smsService.sendSMS(
+          customerPhone,
+          `🚚 Delivery Assignment Confirmed\n\nHello ${this.safeCustomerName(order.customer?.name || '')},\n\nDelivery Agent: ${staff.fullName}\nPhone: ${staff.phone || 'Support Team'}\n\nOrder #${order.orderNumber} will be delivered soon.\n\nThank you for choosing Oud Al Zubarah!`,
+          { orderId: order._id.toString(), orderNumber: order.orderNumber },
+        );
+        if (!customerSmsSent.success) {
+          console.warn('⚠️ SMS collection notice to customer failed:', customerSmsSent.error);
+        }
       } catch (err: any) {
         console.warn('Error sending customer collection WhatsApp message', String(err));
       }
@@ -2025,6 +2072,16 @@ export class OrdersService implements OnModuleInit {
             order.shippingAddress || '',
           );
           if (!shippedSent) this.logWhatsAppFailure('shipped', order.orderNumber);
+
+          // Also send SMS for shipped/out-for-delivery
+          const shippedSmsSent = await this.smsService.sendSMS(
+            customerPhone,
+            `📦 Your Order is Out for Delivery\n\nHello ${this.safeCustomerName(order.customer?.name || '')},\n\nOrder #${order.orderNumber} is now out for delivery!\n\nDelivery Address: ${order.shippingAddress}\n\nThank you for your patience!`,
+            { orderId: order._id.toString(), orderNumber: order.orderNumber },
+          );
+          if (!shippedSmsSent.success) {
+            console.warn('⚠️ SMS out-for-delivery notification failed:', shippedSmsSent.error);
+          }
         } catch (err: any) {
           console.warn('Error sending out-for-delivery WhatsApp message', String(err));
         }

@@ -596,6 +596,31 @@ export class WhatsAppService {
     return this.sendMessage(phone, msg);
   }
 
+  async sendDeliveryReceipt(
+    phone: string,
+    name: string,
+    orderNumber: string,
+    total: number,
+    paymentMethod: string,
+    items: Array<{ name?: string; quantity?: number }>,
+    lang?: string,
+  ): Promise<boolean> {
+    const runtime = await this.getRuntimeSettings();
+    const L = lang || (runtime as any).language || 'en';
+    const lines = (items || [])
+      .slice(0, 20)
+      .map((item) => `• ${item?.name || 'Item'} x${item?.quantity || 0}`)
+      .join('\n');
+
+    if (L === 'ar') {
+      const msg = `✅ تم استلام طلبك بنجاح – عود الزباره ✅\n\nمرحبًا ${name},\nشكرًا على تسوقك معنا!\n\n📦 رقم الطلب: ${orderNumber}\n🛍️ المنتجات:\n${lines}\n\n💰 الإجمالي: ${total} ريال\n💳 طريقة الدفع: ${paymentMethod}\n\nنأمل أن تنال المنتجات رضاك.\nشكرًا لاختيارك عود الزباره 🌿`;
+      return this.sendMessage(phone, msg);
+    }
+
+    const msg = `✅ Order Receipt – Oud Al Zubarah ✅\n\nHello ${name},\nThank you for your purchase!\n\n📦 Order #${orderNumber}\n🛍️ Items:\n${lines}\n\n💰 Total: ${total} QAR\n💳 Payment Method: ${paymentMethod}\n\nWe hope you enjoy your order.\nThank you for choosing Oud Al Zubarah 🌿`;
+    return this.sendMessage(phone, msg);
+  }
+
   async sendPromotion(phone: string, name: string, message: string): Promise<boolean> {
     return this.sendMessage(phone,
       `🎉 *عرض خاص!*\n\nمرحبًا ${name}،\n${message}\n\nعود الزباره 🌿`
