@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary, UploadApiResponse } from 'cloudinary';
+import { unlink } from 'fs/promises';
 import { Readable } from 'stream';
 
 @Injectable()
@@ -14,24 +15,46 @@ export class CloudinaryService {
   }
 
   async uploadImage(file: Express.Multer.File, folder = 'alfursan-oud'): Promise<UploadApiResponse> {
-    return new Promise((resolve, reject) => {
-      const uploadStream = cloudinary.uploader.upload_stream(
-        {
+    const cleanup = async () => {
+      if (file.path) {
+        try {
+          await unlink(file.path);
+        } catch {
+          // Best-effort cleanup only.
+        }
+      }
+    };
+
+    try {
+      if (file.path) {
+        return await cloudinary.uploader.upload(file.path, {
           folder,
           resource_type: 'image',
           transformation: [{ quality: 'auto', fetch_format: 'auto' }],
-        },
-        (error, result) => {
-          if (error) return reject(error);
-          resolve(result!);
-        },
-      );
+        });
+      }
 
-      const readable = new Readable();
-      readable.push(file.buffer);
-      readable.push(null);
-      readable.pipe(uploadStream);
-    });
+      return await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            folder,
+            resource_type: 'image',
+            transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+          },
+          (error, result) => {
+            if (error) return reject(error);
+            resolve(result!);
+          },
+        );
+
+        const readable = new Readable();
+        readable.push(file.buffer);
+        readable.push(null);
+        readable.pipe(uploadStream);
+      });
+    } finally {
+      await cleanup();
+    }
   }
 
   async uploadMultiple(files: Express.Multer.File[], folder = 'alfursan-oud'): Promise<UploadApiResponse[]> {
