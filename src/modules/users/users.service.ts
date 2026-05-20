@@ -217,6 +217,8 @@ export class UsersService {
       fullName: data.name || data.fullName || '',
       email,
       phone: normalizedPhone,
+      country: data.country || '',
+      region: data.region || '',
       password: passwordHash,
       role: data.role || 'user',
       // If admin provided explicit password, mark verified. Otherwise keep existing behavior (invite via OTP)

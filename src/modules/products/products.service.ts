@@ -5,6 +5,7 @@ import { Product, ProductDocument } from './schemas/product.schema';
 import { CreateProductDto, UpdateProductDto, AddProductReviewDto } from './dto/product.dto';
 import { Category, CategoryDocument } from '../categories/schemas/category.schema';
 import * as XLSX from 'xlsx';
+import { UNIT_CONVERSION_FACTORS, convertToGrams } from '../../utils/unitConversion';
 
 @Injectable()
 export class ProductsService {
@@ -30,8 +31,14 @@ export class ProductsService {
 
   private normalizeOfferFields(data: any): any {
     const next: any = { ...data };
+    // If isOnOffer is not provided in the payload, do not modify existing offer fields
+    if (next.isOnOffer === undefined || next.isOnOffer === null) {
+      return next;
+    }
+
     const isOnOffer = next.isOnOffer === true || next.isOnOffer === 'true';
 
+    // If explicitly not on offer, clear offer-related fields
     if (!isOnOffer) {
       next.isOnOffer = false;
       next.offerPrice = 0;
@@ -342,6 +349,32 @@ export class ProductsService {
       }
     }
 
+    // If unit is being changed, attempt to convert existing stock/weight to the new unit
+    if (dto.unit !== undefined) {
+      try {
+        const existing = await this.productModel.findById(id).lean();
+        if (existing && existing.unit) {
+          const oldUnit = String(existing.unit || '').toLowerCase().trim();
+          const newUnit = String(dto.unit || '').toLowerCase().trim();
+          if (oldUnit && newUnit && oldUnit !== newUnit) {
+            const oldStock = Number(existing.stock || 0);
+            const grams = convertToGrams(oldStock, oldUnit);
+            const newFactor = (UNIT_CONVERSION_FACTORS as any)[newUnit];
+            const convertedStock = Number.isFinite(grams) && newFactor ? Math.round((grams / newFactor) * 100) / 100 : grams;
+            data.stock = convertedStock;
+
+            const oldWeight = Number(existing.weight || 0);
+            const gramsWeight = convertToGrams(oldWeight, oldUnit);
+            const convertedWeight = Number.isFinite(gramsWeight) && newFactor ? Math.round((gramsWeight / newFactor) * 100) / 100 : gramsWeight;
+            data.weight = convertedWeight;
+            console.log(`[ProductUpdate] Converted stock/weight from ${oldUnit} -> ${newUnit}: ${oldStock} -> ${convertedStock}`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[ProductUpdate] Failed to convert units: ${e}`);
+      }
+    }
+
     const product = await this.productModel.findByIdAndUpdate(id, { $set: data }, { returnDocument: 'after' });
     if (!product) throw new NotFoundException('Product not found');
     return this.formatAdminProduct(product);
@@ -567,8 +600,9 @@ export class ProductsService {
 
           const mainImage = String(getSafely('Main Image URL') || '').trim();
           const imagesStr = String(getSafely('All Images (comma separated)') || '').trim();
+          // Accept both comma and semicolon separators for image lists for better compatibility
           const images = imagesStr
-            .split(';')
+            .split(/[,;]+/)
             .map((s) => s.trim())
             .filter(Boolean);
 
