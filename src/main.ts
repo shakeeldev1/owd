@@ -97,6 +97,36 @@ async function bootstrap() {
     optionsSuccessStatus: 204,
   });
 
+  // Extra defensive CORS middleware: ensure preflight and simple requests
+  // to critical endpoints (like /upload) always receive the required CORS headers
+  // even if upstream proxies or other middleware interfere.
+  app.use((req, res, next) => {
+    const origin = req.headers.origin as string | undefined;
+    if (origin) {
+      try {
+        const parsed = new URL(origin);
+        const hostname = parsed.hostname;
+        const isAllowedDomain = hostname === 'oudalzubarah.com' || hostname.endsWith('.oudalzubarah.com');
+        if (isAllowedDomain || (allowedOrigins && allowedOrigins.includes(origin))) {
+          res.header('Access-Control-Allow-Origin', origin);
+          res.header('Access-Control-Allow-Credentials', 'true');
+          res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Accept-Language, Origin');
+          res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+        }
+      } catch (err) {
+        // ignore invalid origin values
+      }
+    }
+
+    if (req.method === 'OPTIONS') {
+      // respond to preflight immediately
+      res.sendStatus(204);
+      return;
+    }
+
+    next();
+  });
+
   // Global API prefix
   // app.setGlobalPrefix('api');
 
