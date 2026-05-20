@@ -67,8 +67,6 @@ export class CategoriesService {
     }
 
     const productCountsByCategoryId = new Map<string, number>();
-    const productImagesByCategoryId = new Map<string, string>();
-
     const products = await this.productModel
       .find({ status: 'active' })
       .select('_id category categoryName image')
@@ -87,10 +85,6 @@ export class CategoriesService {
 
       const key = String(matchedCategory._id);
       productCountsByCategoryId.set(key, (productCountsByCategoryId.get(key) || 0) + 1);
-
-      if (!productImagesByCategoryId.has(key) && product.image) {
-        productImagesByCategoryId.set(key, product.image);
-      }
     }
 
     return categories.map((c) => ({
@@ -100,7 +94,7 @@ export class CategoriesService {
       nameAr: c.nameAr,
       description: c.description,
       descriptionAr: c.descriptionAr,
-      image: productImagesByCategoryId.get(String(c._id)) || c.image || '',
+      image: c.image || '',
       slug: c.slug,
       href: `/shop?category=${c.slug}`,
       productCount: productCountsByCategoryId.get(String(c._id)) || 0,
