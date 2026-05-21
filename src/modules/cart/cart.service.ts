@@ -52,7 +52,8 @@ export class CartService {
           : Number(product?.price || 0);
 
     const offerPrice = Number(product?.offerPrice || 0);
-    const hasActiveOffer = product?.isOnOffer === true
+    // Treat product as on-offer if either `isOnOffer` is true or an `offerPrice` is present
+    const hasActiveOffer = (product?.isOnOffer === true || offerPrice > 0)
       && this.isOfferActiveForDate(product?.offerStartDate, product?.offerEndDate)
       && offerPrice > 0
       && regularPrice > 0
