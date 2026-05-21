@@ -245,8 +245,9 @@ export class UsersService {
       // Also attempt to send invitation via WhatsApp (if phone present)
       try {
         if (normalizedPhone) {
-          const inviteMsg = `Hello ${user.fullName || ''}\\nYour account invitation code: ${otp}\\nValid for 10 minutes.`;
-          await this.whatsAppService.sendMessage(normalizedPhone, inviteMsg);
+          const ar = `مرحبًا ${user.fullName || ''}\\nرمز دعوة حسابك: ${otp}\\nصالح لمدة 10 دقائق.`;
+          const en = `Hello ${user.fullName || ''}\\nYour account invitation code: ${otp}\\nValid for 10 minutes.`;
+          await this.whatsAppService.sendMessage(normalizedPhone, `${ar}\\n\\n${en}`);
         }
       } catch (err: any) {
         console.warn('⚠️ Failed to send invitation WhatsApp:', err?.message || err);

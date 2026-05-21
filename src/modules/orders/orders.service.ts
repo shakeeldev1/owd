@@ -2026,7 +2026,7 @@ export class OrdersService implements OnModuleInit {
       // Also send SMS to delivery staff
       const smsSent = await this.smsService.sendSMS(
         staff.phone,
-        `📦 New Delivery Assignment\n\nHello ${staff.fullName},\n\nYou have been assigned to deliver Order #${order.orderNumber}.\n\nDelivery Address: ${order.shippingAddress}\n\nPlease update the status after delivery.\n\nThank you!`,
+        `📋 تم تعيينك لتوصيل جديد\n\nمرحبًا ${staff.fullName},\nتم تعيينك لتوصيل الطلب #${order.orderNumber}.\nالعنوان: ${order.shippingAddress}\n\nيرجى تحديث الحالة عند الانتهاء.\n\nشكراً!\n\n📋 New Delivery Assignment\n\nHello ${staff.fullName},\nYou have been assigned to deliver Order #${order.orderNumber}.\nAddress: ${order.shippingAddress}\n\nPlease update status after completion.\n\nThank you!`,
         { orderId: order._id.toString(), orderNumber: order.orderNumber },
       );
       if (!smsSent.success) {
@@ -2051,7 +2051,7 @@ export class OrdersService implements OnModuleInit {
         // Also send SMS to customer about collection notice
         const customerSmsSent = await this.smsService.sendSMS(
           customerPhone,
-          `🚚 Delivery Assignment Confirmed\n\nHello ${this.safeCustomerName(order.customer?.name || '')},\n\nDelivery Agent: ${staff.fullName}\nPhone: ${staff.phone || 'Support Team'}\n\nOrder #${order.orderNumber} will be delivered soon.\n\nThank you for choosing Oud Al Zubarah!`,
+          `🚚 تم تأكيد تعيين المندوب\n\nمرحبًا ${this.safeCustomerName(order.customer?.name || '')},\n\nاسم المندوب: ${staff.fullName}\nرقم الهاتف: ${staff.phone || 'فريق الدعم'}\n\nسيتم توصيل الطلب #${order.orderNumber} قريبًا.\n\nشكرًا لاختيارك عود الزباره!\n\n🚚 Delivery Assignment Confirmed\n\nHello ${this.safeCustomerName(order.customer?.name || '')},\n\nDelivery Agent: ${staff.fullName}\nPhone: ${staff.phone || 'Support Team'}\n\nOrder #${order.orderNumber} will be delivered soon.\n\nThank you for choosing Oud Al Zubarah!`,
           { orderId: order._id.toString(), orderNumber: order.orderNumber },
         );
         if (!customerSmsSent.success) {
@@ -2076,7 +2076,7 @@ export class OrdersService implements OnModuleInit {
           // Also send SMS for shipped/out-for-delivery
           const shippedSmsSent = await this.smsService.sendSMS(
             customerPhone,
-            `📦 Your Order is Out for Delivery\n\nHello ${this.safeCustomerName(order.customer?.name || '')},\n\nOrder #${order.orderNumber} is now out for delivery!\n\nDelivery Address: ${order.shippingAddress}\n\nThank you for your patience!`,
+            `📦 تم خروج طلبك للتوصيل\n\nمرحبًا ${this.safeCustomerName(order.customer?.name || '')},\n\nطلب #${order.orderNumber} الآن في طريقه للتوصيل!\n\nعنوان التوصيل: ${order.shippingAddress}\n\nشكرًا لصبرك!\n\n📦 Your Order is Out for Delivery\n\nHello ${this.safeCustomerName(order.customer?.name || '')},\n\nOrder #${order.orderNumber} is now out for delivery!\n\nDelivery Address: ${order.shippingAddress}\n\nThank you for your patience!`,
             { orderId: order._id.toString(), orderNumber: order.orderNumber },
           );
           if (!shippedSmsSent.success) {
@@ -2091,8 +2091,8 @@ export class OrdersService implements OnModuleInit {
     try {
       await this.notificationsService.create({
         user: dto.deliveryStaffId,
-        title: 'New Delivery Assignment',
-        message: `Order ${order.orderNumber} has been assigned to you`,
+        title: `📋 تم تعيينك لتوصيل جديد | New Delivery Assignment`,
+        message: `تم تعيين الطلب #${order.orderNumber} لك.\n\nOrder #${order.orderNumber} has been assigned to you.`,
         type: 'delivery',
         data: { orderId, orderNumber: order.orderNumber },
       });

@@ -340,51 +340,39 @@ export class WhatsAppService {
 
   // Order lifecycle messages
   async sendOrderConfirmation(phone: string, name: string, orderNumber: string, total: number): Promise<boolean> {
-    const msg = `🧾 فاتورة طلبك – عود الزباره\n\nشكرًا لطلبك 🌿\nتم استلام طلبك بنجاح.\n\n📦 رقم الطلب: ${orderNumber}\n\n💰 الإجمالي: ${total} ريال قطري\n\nسيتم إشعارك بجميع التحديثات.`;
-    return this.sendMessage(phone, msg);
+    const ar = `🧾 فاتورة طلبك – عود الزباره\n\nشكرًا لطلبك 🌿\nتم استلام طلبك بنجاح.\n\n📦 رقم الطلب: ${orderNumber}\n\n💰 الإجمالي: ${total} ريال قطري\n\nسيتم إشعارك بجميع التحديثات.`;
+    const en = `🧾 Order Receipt – Oud Al Zubarah\n\nThank you for your order 🌿\nYour order has been received successfully.\n\n📦 Order: ${orderNumber}\n\n💰 Total: ${total} QAR\n\nYou will be notified of updates.`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   async sendOrderProcessing(phone: string, name: string, orderNumber: string): Promise<boolean> {
-    const msg = `طلبك الآن قيد التجهيز ✨\nنعمل على تحضيره بأعلى جودة.\n\nسيتم إشعارك عند خروجه للتوصيل.`;
-    return this.sendMessage(phone, msg);
+    const ar = `طلبك الآن قيد التجهيز ✨\nنعمل على تحضيره بأعلى جودة.\n\nسيتم إشعارك عند خروجه للتوصيل.`;
+    const en = `Your order is now being prepared ✨\nWe are preparing it with the highest care.\n\nYou will be notified when it is out for delivery.`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   async sendOrderShipped(phone: string, name: string, orderNumber: string, trackingNumber?: string, driverPhone?: string, location?: string): Promise<boolean> {
     const runtime = await this.getRuntimeSettings();
     const lang = (runtime as any).language || 'en';
     
-    if (lang === 'ar') {
-      let msg = `🚚 طلبك في الطريق إليك الآن 🚚\n\nمرحبًا ${name},\nطلبك *#${orderNumber}* في طريقه للتوصيل\n`;
-      if (driverPhone) msg += `📞 رقم المندوب: ${driverPhone}\n`;
-      if (location) msg += `📍 الموقع: ${location}\n`;
-      msg += `\nشكرًا لاختيارك عود الزباره 🌿`;
-      return this.sendMessage(phone, msg);
-    }
-
-    let msg = `🚚 Your order is on the way 🚚\n\nHello ${name},\nYour Order #${orderNumber} is out for delivery\n`;
-    if (driverPhone) msg += `📞 Driver Phone: ${driverPhone}\n`;
-    if (location) msg += `📍 Location: ${location}\n`;
-    msg += `\nThank you for choosing Oud Al Zubarah 🌿`;
-    return this.sendMessage(phone, msg);
+    const ar = `🚚 طلبك في الطريق إليك الآن 🚚\n\nمرحبًا ${name},\nطلبك *#${orderNumber}* في طريقه للتوصيل\n${driverPhone ? `📞 رقم المندوب: ${driverPhone}\n` : ''}${location ? `📍 الموقع: ${location}\n` : ''}\nشكرًا لاختيارك عود الزباره 🌿`;
+    const en = `🚚 Your order is on the way 🚚\n\nHello ${name},\nOrder #${orderNumber} is out for delivery\n${driverPhone ? `📞 Driver Phone: ${driverPhone}\n` : ''}${location ? `📍 Location: ${location}\n` : ''}\nThank you for choosing Oud Al Zubarah 🌿`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   async sendOrderDelivered(phone: string, name: string, orderNumber: string): Promise<boolean> {
     const runtime = await this.getRuntimeSettings();
     const lang = (runtime as any).language || 'en';
     
-    if (lang === 'ar') {
-      const msg = `✅ تم تسليم طلبك بنجاح ✅\n\nمرحبًا ${name},\nتم تسليم طلبك *#${orderNumber}* بنجاح\n\nنأمل أن تنال منتجات عود الزباره رضاك. شكرًا لك! 🌿`;
-      return this.sendMessage(phone, msg);
-    }
-    
-    const msg = `✅ Order Delivered Successfully ✅\n\nHello ${name},\nYour Order #${orderNumber} has been delivered successfully\n\nWe hope you enjoy your purchase. Thank you! 🌿`;
-    return this.sendMessage(phone, msg);
+    const ar = `✅ تم تسليم طلبك بنجاح ✅\n\nمرحبًا ${name},\nتم تسليم طلبك *#${orderNumber}* بنجاح\n\nنأمل أن تنال منتجات عود الزباره رضاك. شكرًا لك! 🌿`;
+    const en = `✅ Order Delivered Successfully ✅\n\nHello ${name},\nOrder #${orderNumber} has been delivered successfully\n\nWe hope you enjoy your purchase. Thank you! 🌿`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   async sendOrderCancelled(phone: string, name: string, orderNumber: string): Promise<boolean> {
-    return this.sendMessage(phone,
-      `❌ *تم إلغاء الطلب*\n\nمرحبًا ${name}،\nتم إلغاء طلبك *#${orderNumber}*.\n\nإذا كانت لديك أي استفسارات، يرجى التواصل معنا.\n\nعود الزباره 🌿`
-    );
+    const ar = `❌ *تم إلغاء الطلب*\n\nمرحبًا ${name}،\nتم إلغاء طلبك *#${orderNumber}*.\n\nإذا كانت لديك أي استفسارات، يرجى التواصل معنا.\n\nعود الزباره 🌿`;
+    const en = `❌ Order Cancelled\n\nHello ${name},\nYour Order #${orderNumber} has been cancelled.\n\nIf you have questions, please contact us.\n\nOud Al Zubarah 🌿`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   // Staff notifications
@@ -448,29 +436,18 @@ export class WhatsAppService {
     const lang = (runtime as any).language || 'en';
     const timestamp = new Date().toLocaleString('en-US', { timeZone: 'Asia/Qatar' });
     
-    if (lang === 'ar') {
-      const msg = `📢 تحديث حالة الطلب\n\nرقم الطلب: *#${orderNumber}*\nالعميل: ${customerName || 'غير محدد'}\nرقم الهاتف: ${customerPhone || 'غير محدد'}\nالحالة الجديدة: *${status}*\nالوقت: ${timestamp}`;
-      return this.sendMessage(phone, msg);
-    }
-    
-    return this.sendMessage(
-      phone,
-      `📢 تحديث حالة الطلب\n\nرقم الطلب: *#${orderNumber}*\nالعميل: ${customerName || 'غير محدد'}\nرقم الهاتف: ${customerPhone || 'غير محدد'}\nالحالة الجديدة: *${status}*\nالوقت: ${timestamp}`,
-    );
+    const ar = `📢 تحديث حالة الطلب\n\nرقم الطلب: *#${orderNumber}*\nالعميل: ${customerName || 'غير محدد'}\nرقم الهاتف: ${customerPhone || 'غير محدد'}\nالحالة الجديدة: *${status}*\nالوقت: ${timestamp}`;
+    const en = `📢 Order Status Update\n\nOrder: *#${orderNumber}*\nCustomer: ${customerName || 'Unknown'}\nPhone: ${customerPhone || 'Unknown'}\nNew Status: *${status}*\nTime: ${timestamp}`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   async sendDeliveryAssignment(phone: string, staffName: string, orderNumber: string, address: string): Promise<boolean> {
     const runtime = await this.getRuntimeSettings();
     const lang = (runtime as any).language || 'en';
     
-    if (lang === 'ar') {
-      const msg = `📋 تم تعيينك لتوصيل جديد\n\nمرحبًا ${staffName},\nتم تعيينك لتوصيل الطلب *#${orderNumber}*.\nالعنوان: ${address}\n\nيرجى تحديث الحالة عند الانتهاء.`;
-      return this.sendMessage(phone, msg);
-    }
-    
-    return this.sendMessage(phone,
-      `📋 تم تعيينك لتوصيل جديد\n\nمرحبًا ${staffName},\nتم تعيينك لتوصيل الطلب *#${orderNumber}*\.\nالعنوان: ${address}\n\nيرجى تحديث الحالة عند الانتهاء.`
-    );
+    const ar = `📋 تم تعيينك لتوصيل جديد\n\nمرحبًا ${staffName},\nتم تعيينك لتوصيل الطلب *#${orderNumber}*.\nالعنوان: ${address}\n\nيرجى تحديث الحالة عند الانتهاء.`;
+    const en = `📋 New Delivery Assignment\n\nHello ${staffName},\nYou have been assigned to deliver Order #${orderNumber}.\nAddress: ${address}\n\nPlease update status after completion.`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   async sendCustomerCollectionNotice(
@@ -483,47 +460,31 @@ export class WhatsAppService {
     const runtime = await this.getRuntimeSettings();
     const lang = (runtime as any).language || 'en';
     
-    if (lang === 'ar') {
-      const msg = `🚚 نحن في الطريق إليك 🚚\n\nمرحبًا ${customerName},\nتم تعيين المندوب لتوصيل طلبك *#${orderNumber}*\nاسم المندوب: ${staffName}\nرقم الهاتف: ${staffPhone || 'يرجى التواصل مع خدمة العملاء'}\n\nشكرًا لاختيارك عود الزباره 🌿`;
-      return this.sendMessage(phone, msg);
-    }
-    
-    const msg = `🚚 Your order is on the way 🚚\n\nHello ${customerName},\nDelivery agent assigned for Order #${orderNumber}\nAgent Name: ${staffName}\nPhone: ${staffPhone || 'Contact Support'}\n\nThank you for choosing Oud Al Zubarah 🌿`;
-    return this.sendMessage(phone, msg);
+    const ar = `🚚 نحن في الطريق إليك 🚚\n\nمرحبًا ${customerName},\nتم تعيين المندوب لتوصيل طلبك *#${orderNumber}*\nاسم المندوب: ${staffName}\nرقم الهاتف: ${staffPhone || 'يرجى التواصل مع خدمة العملاء'}\n\nشكرًا لاختيارك عود الزباره 🌿`;
+    const en = `🚚 Your order is on the way 🚚\n\nHello ${customerName},\nDelivery agent assigned for Order #${orderNumber}\nAgent Name: ${staffName}\nPhone: ${staffPhone || 'Contact Support'}\n\nThank you for choosing Oud Al Zubarah 🌿`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   async sendLowStockAlert(phone: string, productName: string, currentStock: number): Promise<boolean> {
     const runtime = await this.getRuntimeSettings();
     const lang = (runtime as any).language || 'en';
-
-    // Out of stock
+    // Always send bilingual message: Arabic first, then English
     if (currentStock <= 0) {
-      if (lang === 'ar') {
-        const msg = `🚫 نفاد المخزون\n\nالمنتج: ${productName}\n\nالكمية الحالية: 0\n\nيرجى إعادة التوريد فورًا.`;
-        return this.sendMessage(phone, msg);
-      }
-
-      const msg = `🚫 نفاد المخزون\n\nالمنتج: ${productName}\n\nالكمية الحالية: 0\n\nيرجى إعادة التوريد فورًا.`;
-      return this.sendMessage(phone, msg);
+      const ar = `🚫 نفاد المخزون\n\nالمنتج: ${productName}\n\nالكمية الحالية: 0\n\nيرجى إعادة التوريد فورًا.`;
+      const en = `🚫 Out of Stock\n\nProduct: ${productName}\n\nCurrent Quantity: 0\n\nPlease restock immediately.`;
+      return this.sendMessage(phone, `${ar}\n\n${en}`);
     }
 
-    // Low stock (threshold example: <=10)
     if (currentStock <= 10) {
-      if (lang === 'ar') {
-        const msg = `⚠️ تنبيه مخزون منخفض\n\nالمنتج: ${productName}\nالكمية المتبقية: ${currentStock}\n\nيرجى إعادة التوريد قريبًا.`;
-        return this.sendMessage(phone, msg);
-      }
-
-      const msg = `⚠️ تنبيه مخزون منخفض\n\nالمنتج: ${productName}\nالكمية المتبقية: ${currentStock}\n\nيرجى إعادة التوريد قريبًا.`;
-      return this.sendMessage(phone, msg);
+      const ar = `⚠️ تنبيه مخزون منخفض\n\nالمنتج: ${productName}\nالكمية المتبقية: ${currentStock}\n\nيرجى إعادة التوريد قريبًا.`;
+      const en = `⚠️ Low Stock Alert\n\nProduct: ${productName}\nRemaining Quantity: ${currentStock}\n\nPlease restock soon.`;
+      return this.sendMessage(phone, `${ar}\n\n${en}`);
     }
 
-    // Fallback: still send a gentle low-stock notice in default language
-    if (lang === 'ar') {
-      const msg = `⚠️ تنبيه مخزون منخفض\n\nالمنتج: ${productName}\nالكمية المتبقية: ${currentStock}`;
-      return this.sendMessage(phone, msg);
-    }
-    return this.sendMessage(phone, `⚠️ تنبيه مخزون منخفض\n\nالمنتج: ${productName}\nالكمية المتبقية: ${currentStock}`);
+    // Generic fallback low-stock notice
+    const ar = `⚠️ تنبيه مخزون منخفض\n\nالمنتج: ${productName}\nالكمية المتبقية: ${currentStock}`;
+    const en = `⚠️ Low Stock Alert\n\nProduct: ${productName}\nRemaining Quantity: ${currentStock}`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   async sendFeedbackRequest(
@@ -539,21 +500,13 @@ export class WhatsAppService {
     const frontendUrl = this.configService.get('FRONTEND_URL', 'https://oudalzubarah.com');
     const appReviewLink = orderId ? `${frontendUrl}/orders/${orderId}/review` : null;
 
-    if (L === 'ar') {
-      let msg = `⭐ نود معرفة رأيك ⭐\n\nمرحبًا ${name},\nشكرًا لك على شرائك من عود الزباره!\nكيف كانت تجربتك؟ 🌿\n\n`;
-      if (appReviewLink) {
-        msg += `📱 شارك تقييمك في التطبيق:\n${appReviewLink}\n\n`;
-      }
-      msg += `🌐 أو شارك تقييمك من هنا:\n${googleReviewLink}\n\n🎁 ستحصل على عرض خاص بعد التقييم`;
-      return this.sendMessage(phone, msg);
-    }
-
-    let msg = `⭐ We'd love your feedback ⭐\n\nHello ${name},\nThank you for purchasing from Oud Al Zubarah!\nHow was your experience? 🌿\n\n`;
-    if (appReviewLink) {
-      msg += `📱 Leave your review in the app:\n${appReviewLink}\n\n`;
-    }
-    msg += `🌐 Or share your review here:\n${googleReviewLink}\n\n🎁 Get a special offer after you review`;
-    return this.sendMessage(phone, msg);
+    const arIntro = `⭐ نود معرفة رأيك ⭐\n\nمرحبًا ${name},\nشكرًا لك على شرائك من عود الزباره!\nكيف كانت تجربتك؟ 🌿\n\n`;
+    const enIntro = `⭐ We'd love your feedback ⭐\n\nHello ${name},\nThank you for purchasing from Oud Al Zubarah!\nHow was your experience? 🌿\n\n`;
+    const arLinks = appReviewLink ? `📱 شارك تقييمك في التطبيق:\n${appReviewLink}\n\n` : '';
+    const enLinks = appReviewLink ? `📱 Leave your review in the app:\n${appReviewLink}\n\n` : '';
+    const ar = `${arIntro}${arLinks}🌐 أو شارك تقييمك من هنا:\n${googleReviewLink}\n\n🎁 ستحصل على عرض خاص بعد التقييم`;
+    const en = `${enIntro}${enLinks}🌐 Or share your review here:\n${googleReviewLink}\n\n🎁 Get a special offer after you review`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   async sendPaymentReceipt(
@@ -572,13 +525,9 @@ export class WhatsAppService {
       .map((item) => `• ${item?.name || 'Item'} x${item?.quantity || 0}`)
       .join('\n');
 
-    if (L === 'ar') {
-      const msg = `🧾 فاتورة طلبك – عود الزباره\n\nشكرًا لطلبك 🌿\nتم استلام طلبك بنجاح.\n\n📦 رقم الطلب: ${orderNumber}\n🛍️ المنتجات:\n${lines}\n\n💰 الإجمالي: ${total} ريال\n💳 طريقة الدفع: ${paymentMethod}\n\nسيتم إشعارك بجميع التحديثات.`;
-      return this.sendMessage(phone, msg);
-    }
-
-    const msg = `🧾 فاتورة طلبك – عود الزباره\n\nشكرًا لطلبك 🌿\nتم استلام طلبك بنجاح.\n\n📦 رقم الطلب: ${orderNumber}\n🛍️ المنتجات:\n${lines}\n\n💰 الإجمالي: ${total} ريال قطري\n💳 طريقة الدفع: ${paymentMethod}\n\nسيتم إشعارك بجميع التحديثات.`;
-    return this.sendMessage(phone, msg);
+    const ar = `🧾 فاتورة طلبك – عود الزباره\n\nشكرًا لطلبك 🌿\nتم استلام طلبك بنجاح.\n\n📦 رقم الطلب: ${orderNumber}\n🛍️ المنتجات:\n${lines}\n\n💰 الإجمالي: ${total} ريال\n💳 طريقة الدفع: ${paymentMethod}\n\nسيتم إشعارك بجميع التحديثات.`;
+    const en = `🧾 Order Receipt – Oud Al Zubarah\n\nThank you for your order 🌿\nYour order has been received successfully.\n\n📦 Order #${orderNumber}\n🛍️ Items:\n${lines}\n\n💰 Total: ${total} QAR\n💳 Payment Method: ${paymentMethod}\n\nYou will be notified of updates.`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   async sendDeliveryReceipt(
@@ -597,56 +546,45 @@ export class WhatsAppService {
       .map((item) => `• ${item?.name || 'Item'} x${item?.quantity || 0}`)
       .join('\n');
 
-    if (L === 'ar') {
-      const msg = `✅ تم استلام طلبك بنجاح – عود الزباره ✅\n\nمرحبًا ${name},\nشكرًا على تسوقك معنا!\n\n📦 رقم الطلب: ${orderNumber}\n🛍️ المنتجات:\n${lines}\n\n💰 الإجمالي: ${total} ريال\n💳 طريقة الدفع: ${paymentMethod}\n\nنأمل أن تنال المنتجات رضاك.\nشكرًا لاختيارك عود الزباره 🌿`;
-      return this.sendMessage(phone, msg);
-    }
-
-    const msg = `✅ Order Receipt – Oud Al Zubarah ✅\n\nHello ${name},\nThank you for your purchase!\n\n📦 Order #${orderNumber}\n🛍️ Items:\n${lines}\n\n💰 Total: ${total} QAR\n💳 Payment Method: ${paymentMethod}\n\nWe hope you enjoy your order.\nThank you for choosing Oud Al Zubarah 🌿`;
-    return this.sendMessage(phone, msg);
+    const ar = `✅ تم استلام طلبك بنجاح – عود الزباره ✅\n\nمرحبًا ${name},\nشكرًا على تسوقك معنا!\n\n📦 رقم الطلب: ${orderNumber}\n🛍️ المنتجات:\n${lines}\n\n💰 الإجمالي: ${total} ريال\n💳 طريقة الدفع: ${paymentMethod}\n\nنأمل أن تنال المنتجات رضاك.\nشكرًا لاختيارك عود الزباره 🌿`;
+    const en = `✅ Order Receipt – Oud Al Zubarah ✅\n\nHello ${name},\nThank you for your purchase!\n\n📦 Order #${orderNumber}\n🛍️ Items:\n${lines}\n\n💰 Total: ${total} QAR\n💳 Payment Method: ${paymentMethod}\n\nWe hope you enjoy your order.\nThank you for choosing Oud Al Zubarah 🌿`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   async sendPromotion(phone: string, name: string, message: string): Promise<boolean> {
-    return this.sendMessage(phone,
-      `🎉 *عرض خاص!*\n\nمرحبًا ${name}،\n${message}\n\nعود الزباره 🌿`
-    );
+    const ar = `🎉 *عرض خاص!*\n\nمرحبًا ${name}،\n${message}\n\nعود الزباره 🌿`;
+    const en = `🎉 Special Offer!\n\nHello ${name},\n${message}\n\nOud Al Zubarah 🌿`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   async sendLoyaltyUpdate(phone: string, name: string, points: number, tier: string): Promise<boolean> {
-    return this.sendMessage(phone,
-      `🏆 *تحديث الولاء*\n\nمرحبًا ${name}،\nلديك الآن *${points} نقطة*!\nالمستوى: *${tier}*\n\nتابع التسوق للحصول على المزيد من المكافآت! 🌿`
-    );
+    const ar = `🏆 *تحديث الولاء*\n\nمرحبًا ${name}،\nلديك الآن *${points} نقطة*!\nالمستوى: *${tier}*\n\nتابع التسوق للحصول على المزيد من المكافآت! 🌿`;
+    const en = `🏆 Loyalty Update\n\nHello ${name},\nYou now have *${points} points*!\nTier: *${tier}*\n\nKeep shopping to earn more rewards! 🌿`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   async sendCustomerOrderDeliveredNotification(phone: string, customerName: string, orderNumber: string): Promise<boolean> {
     const runtime = await this.getRuntimeSettings();
     const lang = (runtime as any).language || 'en';
     
-    if (lang === 'ar') {
-      const msg = `✅ تم تسليم طلبك بنجاح ✅\n\nمرحبًا ${customerName},\nتم تسليم طلبك *#${orderNumber}* بنجاح\n\nنأمل أن تنال منتجات عود الزباره رضاك. شكرًا لك! 🌿`;
-      return this.sendMessage(phone, msg);
-    }
-    
-    const msg = `✅ Order Delivered Successfully ✅\n\nHello ${customerName},\nYour Order #${orderNumber} has been delivered successfully\n\nWe hope you enjoy your purchase. Thank you! 🌿`;
-    return this.sendMessage(phone, msg);
+    const ar = `✅ تم تسليم طلبك بنجاح ✅\n\nمرحبًا ${customerName},\nتم تسليم طلبك *#${orderNumber}* بنجاح\n\nنأمل أن تنال منتجات عود الزباره رضاك. شكرًا لك! 🌿`;
+    const en = `✅ Order Delivered Successfully ✅\n\nHello ${customerName},\nYour Order #${orderNumber} has been delivered successfully\n\nWe hope you enjoy your purchase. Thank you! 🌿`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   async sendAutomaticReviewRequest(phone: string, customerName: string, orderNumber: string, reviewLink: string, lang?: string): Promise<boolean> {
     const runtime = await this.getRuntimeSettings();
     const L = lang || (runtime as any).language || 'en';
     
-    if (L === 'ar') {
-      const msg = `⭐ نود معرفة رأيك ⭐\n\nمرحبًا ${customerName},\nشكرًا لك على شرائك من عود الزباره!\n\nيرجى تقييم تجربتك لطلبك *#${orderNumber}*:\n${reviewLink}\n\nآراؤك تساعدنا في تحسين خدماتنا 🌿`;
-      return this.sendMessage(phone, msg);
-    }
-    
-    const msg = `⭐ We'd love your feedback ⭐\n\nHello ${customerName},\nThank you for purchasing from Oud Al Zubarah!\n\nPlease leave a review for your order #${orderNumber}:\n${reviewLink}\n\nYour feedback helps us improve our service 🌿`;
-    return this.sendMessage(phone, msg);
+    const ar = `⭐ نود معرفة رأيك ⭐\n\nمرحبًا ${customerName},\nشكرًا لك على شرائك من عود الزباره!\n\nيرجى تقييم تجربتك لطلبك *#${orderNumber}*:\n${reviewLink}\n\nآراؤك تساعدنا في تحسين خدماتنا 🌿`;
+    const en = `⭐ We'd love your feedback ⭐\n\nHello ${customerName},\nThank you for purchasing from Oud Al Zubarah!\n\nPlease leave a review for your order #${orderNumber}:\n${reviewLink}\n\nYour feedback helps us improve our service 🌿`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 
   async sendInventorySummary(phone: string, items: Array<{ name: string; stock: number }>, lang?: string): Promise<boolean> {
     const lines = (items || []).slice(0, 50).map((it) => `• ${it.name}: ${it.stock}`).join('\n') || 'لا توجد عناصر منخفضة المخزون';
-    const msg = `تقرير المخزون\n\nالعناصر ذات المخزون المنخفض:\n${lines}\n\nالرجاء إعادة التوريد عند الحاجة.`;
-    return this.sendMessage(phone, msg);
+    const ar = `تقرير المخزون\n\nالعناصر ذات المخزون المنخفض:\n${lines}\n\nالرجاء إعادة التوريد عند الحاجة.`;
+    const en = `Inventory Report\n\nLow stock items:\n${lines}\n\nPlease restock as needed.`;
+    return this.sendMessage(phone, `${ar}\n\n${en}`);
   }
 }
