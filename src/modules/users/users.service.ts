@@ -19,6 +19,13 @@ export class UsersService {
     private whatsAppService: WhatsAppService,
   ) {}
 
+  private normalizeLoyaltyTier(tier?: string): 'silver' | 'gold' | 'platinum' {
+    const normalized = String(tier || '').trim().toLowerCase();
+    if (normalized === 'gold') return 'gold';
+    if (normalized === 'platinum') return 'platinum';
+    return 'silver';
+  }
+
   async getProfile(userId: string) {
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
@@ -33,7 +40,7 @@ export class UsersService {
       avatar: user.avatar,
       address: user.address,
       role: user.role,
-      loyaltyTier: user.loyaltyTier,
+      loyaltyTier: this.normalizeLoyaltyTier(user.loyaltyTier),
       totalSpent: user.totalSpent,
       totalOrders: user.totalOrders,
       notifications: user.notifications,
@@ -76,7 +83,7 @@ export class UsersService {
         avatar: user.avatar,
         address: user.address,
         role: user.role,
-        loyaltyTier: user.loyaltyTier,
+        loyaltyTier: this.normalizeLoyaltyTier(user.loyaltyTier),
         notifications: user.notifications,
         createdAt: (user as any).createdAt,
       },
@@ -137,7 +144,7 @@ export class UsersService {
         role: u.role,
         isActive: u.isActive,
         isVerified: u.isVerified,
-        loyaltyTier: u.loyaltyTier,
+        loyaltyTier: this.normalizeLoyaltyTier(u.loyaltyTier),
         totalSpent: u.totalSpent,
         totalOrders: u.totalOrders,
         createdAt: (u as any).createdAt,

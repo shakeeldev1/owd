@@ -20,6 +20,13 @@ export class AuthService {
     private whatsAppService: WhatsAppService,
   ) {}
 
+  private normalizeLoyaltyTier(tier?: string): 'silver' | 'gold' | 'platinum' {
+    const normalized = String(tier || '').trim().toLowerCase();
+    if (normalized === 'gold') return 'gold';
+    if (normalized === 'platinum') return 'platinum';
+    return 'silver';
+  }
+
   private generateOtp(): string {
     return Math.floor(100000 + Math.random() * 900000).toString();
   }
@@ -217,7 +224,7 @@ export class AuthService {
         avatar: user.avatar,
         address: user.address,
         role: user.role,
-        loyaltyTier: user.loyaltyTier,
+        loyaltyTier: this.normalizeLoyaltyTier(user.loyaltyTier),
         notifications: user.notifications,
         createdAt: (user as any).createdAt,
       },

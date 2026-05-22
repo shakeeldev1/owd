@@ -16,7 +16,7 @@ const UserSchema = new mongoose.Schema(
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
     isVerified: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
-    loyaltyTier: { type: String, enum: ['bronze', 'silver', 'gold'], default: 'bronze' },
+    loyaltyTier: { type: String, enum: ['silver', 'gold', 'platinum'], default: 'silver' },
     totalSpent: { type: Number, default: 0 },
     totalOrders: { type: Number, default: 0 },
   },

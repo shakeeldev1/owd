@@ -249,7 +249,7 @@ export class OrdersService implements OnModuleInit {
     const normalized = String(tier || '').trim().toLowerCase();
     if (normalized === 'gold') return 'gold';
     if (normalized === 'platinum') return 'platinum';
-    // Backward compatibility: treat legacy/unknown tiers (e.g. bronze) as silver.
+    // Backward compatibility: treat legacy/unknown tiers as silver.
     return 'silver';
   }
 

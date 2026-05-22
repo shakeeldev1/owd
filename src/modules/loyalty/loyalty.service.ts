@@ -46,6 +46,13 @@ export class LoyaltyService {
       : calculatedTier;
   }
 
+  private normalizeLoyaltyTier(tier?: string): 'silver' | 'gold' | 'platinum' {
+    const normalized = String(tier || '').trim().toLowerCase();
+    if (normalized === 'gold') return 'gold';
+    if (normalized === 'platinum') return 'platinum';
+    return 'silver';
+  }
+
   private calculateBlockRedemption(
     pointsBalance: number,
     orderTotal?: number,
@@ -328,7 +335,7 @@ export class LoyaltyService {
     const pointsToNextMilestone = this.POINTS_PER_BLOCK - pointsModulo;
 
     // Determine next tier based on totalSpent
-    const currentTier = user.loyaltyTier || 'silver';
+    const currentTier = this.normalizeLoyaltyTier(user.loyaltyTier);
     let nextTier: string | null = null;
     let spentToNextTier = 0;
 
@@ -414,10 +421,11 @@ export class LoyaltyService {
       totalPointsCirculating: stats[0]?.totalPointsCirculating || 0,
       totalLifetimePoints: stats[0]?.totalLifetimePoints || 0,
       avgPointsPerUser: Math.round(stats[0]?.avgPoints || 0),
-      tierBreakdown: tierBreakdown.reduce(
-        (acc, t) => ({ ...acc, [t._id || 'silver']: t.count }),
-        {},
-      ),
+      tierBreakdown: tierBreakdown.reduce((acc: Record<string, number>, t: any) => {
+        const tier = this.normalizeLoyaltyTier(t._id);
+        acc[tier] = (acc[tier] || 0) + t.count;
+        return acc;
+      }, {}),
       recentRedemptions,
     };
   }
@@ -426,7 +434,7 @@ export class LoyaltyService {
   async getAllUsersLoyalty(query: { page?: number; limit?: number; tier?: string }) {
     const { page = 1, limit = 20, tier } = query;
     const filter: any = { role: 'user' };
-    if (tier) filter.loyaltyTier = tier;
+    if (tier) filter.loyaltyTier = this.normalizeLoyaltyTier(tier);
 
     const total = await this.userModel.countDocuments(filter);
     const users = await this.userModel
@@ -436,6 +444,14 @@ export class LoyaltyService {
       .skip((page - 1) * limit)
       .limit(limit);
 
-    return { users, total, page, totalPages: Math.ceil(total / limit) };
+    return {
+      users: users.map((u) => ({
+        ...u.toObject(),
+        loyaltyTier: this.normalizeLoyaltyTier(u.loyaltyTier),
+      })),
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 }

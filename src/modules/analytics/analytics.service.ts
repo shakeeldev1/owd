@@ -15,6 +15,13 @@ export class AnalyticsService {
     @InjectModel(Contact.name) private contactModel: Model<ContactDocument>,
   ) {}
 
+  private normalizeLoyaltyTier(tier?: string): 'silver' | 'gold' | 'platinum' {
+    const normalized = String(tier || '').trim().toLowerCase();
+    if (normalized === 'gold') return 'gold';
+    if (normalized === 'platinum') return 'platinum';
+    return 'silver';
+  }
+
   async getDashboard(): Promise<any> {
     const [
       totalRevenue,
@@ -162,6 +169,19 @@ export class AnalyticsService {
         .exec(),
     ]);
 
-    return { byTier, newThisMonth, topCustomers };
+    const normalizedByTier = byTier.reduce((acc: Record<string, number>, item: any) => {
+      const tier = this.normalizeLoyaltyTier(item.tier);
+      acc[tier] = (acc[tier] || 0) + item.count;
+      return acc;
+    }, {});
+
+    return {
+      byTier: Object.entries(normalizedByTier).map(([tier, count]) => ({ tier, count })),
+      newThisMonth,
+      topCustomers: topCustomers.map((customer: any) => ({
+        ...customer.toObject(),
+        loyaltyTier: this.normalizeLoyaltyTier(customer.loyaltyTier),
+      })),
+    };
   }
 }
