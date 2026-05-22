@@ -7,7 +7,9 @@ import { User, UserDocument } from '../users/schemas/user.schema';
 @Injectable()
 export class LoyaltyService {
   // Constants
-  private readonly POINT_VALUE = 0.15; // 1 point = 0.15 QAR (5000 points = 750 QAR)
+  private readonly POINTS_PER_BLOCK = 5000;
+  private readonly BLOCK_VALUE_QAR = 750;
+  private readonly POINT_VALUE = this.BLOCK_VALUE_QAR / this.POINTS_PER_BLOCK; // 1 point = 0.15 QAR (reference only)
   private readonly SILVER_TIER_RATE = 25; // 1 point per 25 QAR
   private readonly GOLD_TIER_RATE = 20; // 1 point per 20 QAR
   private readonly PLATINUM_TIER_RATE = 15; // 1 point per 15 QAR
@@ -32,6 +34,46 @@ export class LoyaltyService {
     return 'silver';
   }
 
+  private getTierRank(tier: string): number {
+    if (tier === 'platinum') return 3;
+    if (tier === 'gold') return 2;
+    return 1;
+  }
+
+  private keepHighestTier(currentTier: string, calculatedTier: string): string {
+    return this.getTierRank(currentTier) >= this.getTierRank(calculatedTier)
+      ? currentTier
+      : calculatedTier;
+  }
+
+  private calculateBlockRedemption(
+    pointsBalance: number,
+    orderTotal?: number,
+    requestedPoints?: number,
+  ) {
+    const safeBalance = Math.max(0, Math.floor(pointsBalance || 0));
+    const safeRequestedPoints = Math.max(0, Math.floor(requestedPoints || 0));
+
+    const candidatePoints = safeRequestedPoints > 0
+      ? Math.min(safeBalance, Math.floor(safeRequestedPoints / this.POINTS_PER_BLOCK) * this.POINTS_PER_BLOCK)
+      : safeBalance;
+
+    const availableBlocks = Math.floor(candidatePoints / this.POINTS_PER_BLOCK);
+    const orderBlocks = Number.isFinite(orderTotal)
+      ? Math.max(0, Math.floor((orderTotal || 0) / this.BLOCK_VALUE_QAR))
+      : Number.MAX_SAFE_INTEGER;
+
+    const redeemableBlocks = Math.max(0, Math.min(availableBlocks, orderBlocks));
+    const pointsUsed = redeemableBlocks * this.POINTS_PER_BLOCK;
+    const discountValue = redeemableBlocks * this.BLOCK_VALUE_QAR;
+
+    return {
+      redeemableBlocks,
+      pointsUsed,
+      discountValue,
+    };
+  }
+
   /**
    * Calculate points earned for an order based on tier
    * Silver: 1 point per 25 QAR
@@ -47,18 +89,20 @@ export class LoyaltyService {
 
   /**
    * Convert points to discount value
-   * 1 point = 0.15 QAR
+   * Rewards are unlocked only in 5000-point blocks
    */
   calculateDiscountFromPoints(points: number): number {
-    return Math.floor(points * this.POINT_VALUE * 100) / 100; // Round to 2 decimal places
+    return this.calculateBlockRedemption(points).discountValue;
   }
 
   /**
    * Convert discount value back to points (for deduction)
-   * Ensures we only deduct points for the actual discount applied
+   * Uses full 750 QAR reward blocks only
    */
   calculatePointsFromDiscount(discount: number): number {
-    return Math.floor(discount / this.POINT_VALUE);
+    const safeDiscount = Math.max(0, discount || 0);
+    const fullBlocks = Math.floor(safeDiscount / this.BLOCK_VALUE_QAR);
+    return fullBlocks * this.POINTS_PER_BLOCK;
   }
 
   /**
@@ -75,13 +119,16 @@ export class LoyaltyService {
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
+    const pointsToAward = Math.max(0, Math.floor(points || 0));
+
     // Update balances
-    const newPointsBalance = (user.loyaltyPoints || 0) + points;
-    const newLifetimePoints = (user.lifetimePoints || 0) + points;
-    const newTotalSpent = (user.totalSpent || 0) + (orderAmount || 0);
+    const newPointsBalance = (user.loyaltyPoints || 0) + pointsToAward;
+    const newLifetimePoints = (user.lifetimePoints || 0) + pointsToAward;
+    const currentTotalSpent = Math.max(0, user.totalSpent || 0);
     
-    // Recalculate tier based on new total_spent
-    const newTier = this.calculateTierFromSpending(newTotalSpent);
+    // Recalculate tier from lifetime spending and keep upgrades permanent.
+    const calculatedTier = this.calculateTierFromSpending(currentTotalSpent);
+    const newTier = this.keepHighestTier(user.loyaltyTier || 'silver', calculatedTier);
 
     const updatedUser = await this.userModel.findByIdAndUpdate(
       userId,
@@ -89,7 +136,6 @@ export class LoyaltyService {
         loyaltyPoints: newPointsBalance,
         lifetimePoints: newLifetimePoints,
         loyaltyTier: newTier,
-        totalSpent: newTotalSpent,
       },
       { new: true },
     );
@@ -97,7 +143,7 @@ export class LoyaltyService {
     const transaction = await this.loyaltyModel.create({
       user: new Types.ObjectId(userId),
       type: 'earned',
-      points,
+      points: pointsToAward,
       description,
       order: orderId ? new Types.ObjectId(orderId) : undefined,
       balanceAfter: newPointsBalance,
@@ -108,7 +154,7 @@ export class LoyaltyService {
       transaction,
       newPointsBalance,
       newTier,
-      totalSpent: newTotalSpent,
+      totalSpent: currentTotalSpent,
     };
   }
 
@@ -125,21 +171,38 @@ export class LoyaltyService {
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
-    if ((user.loyaltyPoints || 0) < pointsToRedeem) {
-      throw new BadRequestException('Insufficient loyalty points');
+    const safeOrderTotal = Math.max(0, Number(orderTotal) || 0);
+    const currentPoints = Math.max(0, Math.floor(user.loyaltyPoints || 0));
+
+    if (currentPoints < this.POINTS_PER_BLOCK) {
+      return {
+        message: 'No full loyalty reward block available',
+        transaction: null,
+        discountAmount: 0,
+        pointsUsed: 0,
+        redeemableBlocks: 0,
+        newPointsBalance: currentPoints,
+      };
     }
 
-    // Calculate discount from points
-    let discountValue = this.calculateDiscountFromPoints(pointsToRedeem);
+    const { redeemableBlocks, pointsUsed, discountValue } = this.calculateBlockRedemption(
+      currentPoints,
+      safeOrderTotal,
+      pointsToRedeem,
+    );
 
-    // Ensure discount doesn't exceed order total
-    if (discountValue > orderTotal) {
-      discountValue = orderTotal;
+    if (pointsUsed <= 0 || discountValue <= 0) {
+      return {
+        message: 'No full loyalty reward block can be applied to this order',
+        transaction: null,
+        discountAmount: 0,
+        pointsUsed: 0,
+        redeemableBlocks: 0,
+        newPointsBalance: currentPoints,
+      };
     }
 
-    // Calculate actual points to deduct
-    const actualPointsDeducted = this.calculatePointsFromDiscount(discountValue);
-    const newPointsBalance = (user.loyaltyPoints || 0) - actualPointsDeducted;
+    const newPointsBalance = currentPoints - pointsUsed;
 
     // Update user
     await this.userModel.findByIdAndUpdate(userId, {
@@ -150,8 +213,8 @@ export class LoyaltyService {
     const transaction = await this.loyaltyModel.create({
       user: new Types.ObjectId(userId),
       type: 'redeemed',
-      points: -actualPointsDeducted,
-      description: `Redeemed ${actualPointsDeducted} points for ${discountValue} QAR discount`,
+      points: -pointsUsed,
+      description: `Redeemed ${pointsUsed} points (${redeemableBlocks} block${redeemableBlocks > 1 ? 's' : ''}) for ${discountValue} QAR discount`,
       balanceAfter: newPointsBalance,
     });
 
@@ -159,7 +222,8 @@ export class LoyaltyService {
       message: 'Points redeemed for discount',
       transaction,
       discountAmount: discountValue,
-      pointsUsed: actualPointsDeducted,
+      pointsUsed,
+      redeemableBlocks,
       newPointsBalance,
     };
   }
@@ -168,20 +232,27 @@ export class LoyaltyService {
    * Get discount info for given points (preview without deducting)
    * Used for checkout preview/display
    */
-  async previewPointsDiscount(userId: string, points: number) {
+  async previewPointsDiscount(userId: string, points: number, orderTotal?: number) {
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
-    if ((user.loyaltyPoints || 0) < points) {
-      throw new BadRequestException('Insufficient loyalty points');
-    }
+    const currentPoints = Math.max(0, Math.floor(user.loyaltyPoints || 0));
+    const requestedPoints = Math.max(0, Math.floor(points || 0));
+    const safeOrderTotal = Number.isFinite(orderTotal)
+      ? Math.max(0, Number(orderTotal) || 0)
+      : undefined;
 
-    const discountValue = this.calculateDiscountFromPoints(points);
+    const { redeemableBlocks, pointsUsed, discountValue } = this.calculateBlockRedemption(
+      currentPoints,
+      safeOrderTotal,
+      requestedPoints,
+    );
     
     return {
-      points,
+      points: pointsUsed,
       discountValue,
-      message: `${points} points = ${discountValue} QAR discount`,
+      redeemableBlocks,
+      message: `${pointsUsed} points (${redeemableBlocks} block${redeemableBlocks > 1 ? 's' : ''}) = ${discountValue} QAR discount`,
     };
   }
 
@@ -192,9 +263,12 @@ export class LoyaltyService {
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
-    const newPointsBalance = (user.loyaltyPoints || 0) + points;
-    const newLifetimePoints = (user.lifetimePoints || 0) + points;
-    const newTier = this.calculateTierFromSpending(user.totalSpent || 0);
+    const safePoints = Math.max(0, Math.floor(points || 0));
+
+    const newPointsBalance = (user.loyaltyPoints || 0) + safePoints;
+    const newLifetimePoints = (user.lifetimePoints || 0) + safePoints;
+    const calculatedTier = this.calculateTierFromSpending(user.totalSpent || 0);
+    const newTier = this.keepHighestTier(user.loyaltyTier || 'silver', calculatedTier);
 
     await this.userModel.findByIdAndUpdate(userId, {
       loyaltyPoints: newPointsBalance,
@@ -205,7 +279,7 @@ export class LoyaltyService {
     const transaction = await this.loyaltyModel.create({
       user: new Types.ObjectId(userId),
       type: 'bonus',
-      points,
+      points: safePoints,
       description: description || 'Bonus points from admin',
       balanceAfter: newPointsBalance,
     });
@@ -218,7 +292,9 @@ export class LoyaltyService {
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
-    const newBalance = Math.max(0, (user.loyaltyPoints || 0) + points);
+    const safePoints = Math.floor(points || 0);
+
+    const newBalance = Math.max(0, (user.loyaltyPoints || 0) + safePoints);
 
     await this.userModel.findByIdAndUpdate(userId, {
       loyaltyPoints: newBalance,
@@ -227,7 +303,7 @@ export class LoyaltyService {
     const transaction = await this.loyaltyModel.create({
       user: new Types.ObjectId(userId),
       type: 'adjustment',
-      points,
+      points: safePoints,
       description: description || 'Admin adjustment',
       balanceAfter: newBalance,
     });
@@ -243,12 +319,13 @@ export class LoyaltyService {
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
-    const currentPoints = user.loyaltyPoints || 0;
-    const discountValue = this.calculateDiscountFromPoints(currentPoints);
-    
-    // Calculate remaining points to next 5000 points milestone
-    const pointsModulo = currentPoints % 5000;
-    const pointsToNextMilestone = pointsModulo === 0 ? 5000 : 5000 - pointsModulo;
+    const currentPoints = Math.max(0, Math.floor(user.loyaltyPoints || 0));
+    const redeemableBlocks = Math.floor(currentPoints / this.POINTS_PER_BLOCK);
+    const availableReward = redeemableBlocks * this.BLOCK_VALUE_QAR;
+
+    // Keep formula explicit: remaining = 5000 - (points mod 5000)
+    const pointsModulo = currentPoints % this.POINTS_PER_BLOCK;
+    const pointsToNextMilestone = this.POINTS_PER_BLOCK - pointsModulo;
 
     // Determine next tier based on totalSpent
     const currentTier = user.loyaltyTier || 'silver';
@@ -268,7 +345,9 @@ export class LoyaltyService {
       points: currentPoints,
       lifetimePoints: user.lifetimePoints || 0,
       totalSpent: user.totalSpent || 0,
-      discountValue: Math.round(discountValue * 100) / 100, // Round to 2 decimals
+      redeemableBlocks,
+      availableReward,
+      discountValue: availableReward,
       pointsToNextMilestone,
       nextTier,
       spentToNextTier,
@@ -278,6 +357,8 @@ export class LoyaltyService {
         platinum: `1 point per ${this.PLATINUM_TIER_RATE} QAR`,
       },
       pointValue: this.POINT_VALUE,
+      pointsPerRewardBlock: this.POINTS_PER_BLOCK,
+      rewardBlockValue: this.BLOCK_VALUE_QAR,
     };
   }
 
@@ -334,7 +415,7 @@ export class LoyaltyService {
       totalLifetimePoints: stats[0]?.totalLifetimePoints || 0,
       avgPointsPerUser: Math.round(stats[0]?.avgPoints || 0),
       tierBreakdown: tierBreakdown.reduce(
-        (acc, t) => ({ ...acc, [t._id || 'bronze']: t.count }),
+        (acc, t) => ({ ...acc, [t._id || 'silver']: t.count }),
         {},
       ),
       recentRedemptions,

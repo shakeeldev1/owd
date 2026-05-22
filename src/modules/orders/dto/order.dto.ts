@@ -139,6 +139,10 @@ export class CreateSkipCashCheckoutSessionDto {
   @IsString() @IsOptional() notes?: string;
   @IsString() @IsOptional() country?: string;
 
+  // Loyalty system
+  @IsNumber() @IsOptional() loyaltyDiscount?: number;
+  @IsNumber() @IsOptional() loyaltyPointsToUse?: number;
+
   @ValidateNested()
   @Type(() => OrderCustomerDto)
   @IsOptional()

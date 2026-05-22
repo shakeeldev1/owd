@@ -34,6 +34,9 @@ import { normalizePhone } from '../../utils/phone';
 
 @Injectable()
 export class OrdersService implements OnModuleInit {
+  private readonly LOYALTY_POINTS_PER_BLOCK = 5000;
+  private readonly LOYALTY_BLOCK_VALUE_QAR = 750;
+
   constructor(
     @InjectModel(Order.name) private orderModel: Model<OrderDocument>,
     @InjectModel(Review.name) private reviewModel: Model<ReviewDocument>,
@@ -173,6 +176,73 @@ export class OrdersService implements OnModuleInit {
   // ─── Calculate loyalty points based on order total and customer tier ───
   private calculateLoyaltyPoints(total: number, tier: string = 'silver'): number {
     return this.loyaltyService.calculatePointsForOrder(total, tier);
+  }
+
+  private calculateLoyaltyRedemptionPreview(
+    pointsBalance: number,
+    orderTotal: number,
+    requestedPoints?: number,
+  ) {
+    const safeBalance = Math.max(0, Math.floor(pointsBalance || 0));
+    const safeOrderTotal = Math.max(0, Number(orderTotal) || 0);
+    const safeRequestedPoints = Math.max(0, Math.floor(requestedPoints || 0));
+
+    const candidatePoints = safeRequestedPoints > 0
+      ? Math.min(safeBalance, Math.floor(safeRequestedPoints / this.LOYALTY_POINTS_PER_BLOCK) * this.LOYALTY_POINTS_PER_BLOCK)
+      : safeBalance;
+
+    const availableBlocks = Math.floor(candidatePoints / this.LOYALTY_POINTS_PER_BLOCK);
+    const orderBlocks = Math.floor(safeOrderTotal / this.LOYALTY_BLOCK_VALUE_QAR);
+    const redeemableBlocks = Math.max(0, Math.min(availableBlocks, orderBlocks));
+
+    return {
+      redeemableBlocks,
+      pointsUsed: redeemableBlocks * this.LOYALTY_POINTS_PER_BLOCK,
+      discountValue: redeemableBlocks * this.LOYALTY_BLOCK_VALUE_QAR,
+    };
+  }
+
+  private calculateTierFromSpending(totalSpent: number): 'silver' | 'gold' | 'platinum' {
+    if (totalSpent >= 150000) return 'platinum';
+    if (totalSpent >= 50000) return 'gold';
+    return 'silver';
+  }
+
+  private getTierRank(tier: string): number {
+    if (tier === 'platinum') return 3;
+    if (tier === 'gold') return 2;
+    return 1;
+  }
+
+  private keepHighestTier(currentTier: string, calculatedTier: string): 'silver' | 'gold' | 'platinum' {
+    return this.getTierRank(currentTier) >= this.getTierRank(calculatedTier)
+      ? this.normalizeLoyaltyTier(currentTier)
+      : this.normalizeLoyaltyTier(calculatedTier);
+  }
+
+  private async revertLoyaltyForCancelledOrder(order: OrderDocument) {
+    const userId = String(order.user);
+    const user = await this.userModel.findById(userId);
+    if (!user) return;
+
+    const spentToRevert = Math.max(0, Number(order.total) || 0);
+    const nextTotalSpent = Math.max(0, Number(user.totalSpent || 0) - spentToRevert);
+    const calculatedTier = this.calculateTierFromSpending(nextTotalSpent);
+    const nextTier = this.keepHighestTier(user.loyaltyTier || 'silver', calculatedTier);
+
+    await this.userModel.findByIdAndUpdate(userId, {
+      totalSpent: nextTotalSpent,
+      loyaltyTier: nextTier,
+    });
+
+    const pointsUsed = Math.max(0, Math.floor(order.loyaltyPointsUsed || 0));
+    if (pointsUsed > 0) {
+      await this.loyaltyService.adjustPoints(
+        userId,
+        pointsUsed,
+        `Restored ${pointsUsed} points from cancelled order ${order.orderNumber}`,
+      );
+    }
   }
 
   private normalizeLoyaltyTier(tier?: string): 'silver' | 'gold' | 'platinum' {
@@ -627,7 +697,13 @@ export class OrdersService implements OnModuleInit {
     const subtotal = dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const discountResolution = await this.resolveOrderDiscount(dto.discountCode, subtotal);
     const shippingCost = 0; // Shipping is always free
-    const total = Math.max(0, subtotal - discountResolution.discount + shippingCost);
+    const orderTotalBeforeLoyalty = Math.max(0, subtotal - discountResolution.discount + shippingCost);
+    const loyaltyPreview = this.calculateLoyaltyRedemptionPreview(
+      user.loyaltyPoints || 0,
+      orderTotalBeforeLoyalty,
+      dto.loyaltyPointsToUse,
+    );
+    const total = Math.max(0, orderTotalBeforeLoyalty - loyaltyPreview.discountValue);
 
     const backendUrl = this.configService.get<string>('BACKEND_URL') || 'http://localhost:5000';
     const frontendUrl = this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
@@ -649,6 +725,8 @@ export class OrdersService implements OnModuleInit {
         shippingAddress: dto.shippingAddress,
         paymentMethod: 'skipcash',
         discountCode: discountResolution.code,
+        loyaltyDiscount: loyaltyPreview.discountValue,
+        loyaltyPointsToUse: loyaltyPreview.pointsUsed,
         notes: dto.notes || '',
         customer: dto.customer,
       },
@@ -1177,25 +1255,24 @@ export class OrdersService implements OnModuleInit {
     // Handle loyalty discount
     let loyaltyDiscount = 0;
     let loyaltyPointsUsed = 0;
-    if (dto.loyaltyDiscount && dto.loyaltyDiscount > 0) {
-      // Validate loyalty discount doesn't exceed order total
-      const orderTotalBeforeLoyalty = Math.max(0, subtotal - discount + shippingCost);
-      loyaltyDiscount = Math.min(dto.loyaltyDiscount, orderTotalBeforeLoyalty);
-      
-      // Deduct points for the loyalty discount
-      try {
-        const redemptionResult = await this.loyaltyService.redeemPointsForDiscount(
-          userId,
-          dto.loyaltyPointsToUse || 0,
-          orderTotalBeforeLoyalty,
-        );
-        loyaltyPointsUsed = redemptionResult.pointsUsed;
-        loyaltyDiscount = redemptionResult.discountAmount;
-      } catch (e) {
-        // If redemption fails, just ignore loyalty discount
-        loyaltyDiscount = 0;
-        loyaltyPointsUsed = 0;
-      }
+    const orderTotalBeforeLoyalty = Math.max(0, subtotal - discount + shippingCost);
+    const requestedPointsToUse = Math.max(
+      0,
+      Math.floor(dto.loyaltyPointsToUse || user.loyaltyPoints || 0),
+    );
+
+    // Loyalty redemption is strictly block-based and auto-applied at checkout.
+    try {
+      const redemptionResult = await this.loyaltyService.redeemPointsForDiscount(
+        userId,
+        requestedPointsToUse,
+        orderTotalBeforeLoyalty,
+      );
+      loyaltyPointsUsed = redemptionResult.pointsUsed || 0;
+      loyaltyDiscount = redemptionResult.discountAmount || 0;
+    } catch (e) {
+      loyaltyDiscount = 0;
+      loyaltyPointsUsed = 0;
     }
     
     const total = Math.max(0, subtotal - discount - loyaltyDiscount + shippingCost);
@@ -1827,6 +1904,7 @@ export class OrdersService implements OnModuleInit {
         }
         // Restore stock
         await this.restoreStock(order.items);
+        await this.revertLoyaltyForCancelledOrder(updatedOrder);
         break;
     }
 
@@ -1945,6 +2023,21 @@ export class OrdersService implements OnModuleInit {
         customerPhone,
         customerName,
       );
+    }
+
+    if (
+      dto.paymentStatus === 'refunded'
+      && previousPaymentStatus !== 'refunded'
+      && order.status === 'delivered'
+    ) {
+      const earnedPoints = Math.max(0, Math.floor(order.loyaltyPointsEarned || 0));
+      if (earnedPoints > 0) {
+        await this.loyaltyService.adjustPoints(
+          String(order.user),
+          -earnedPoints,
+          `Refund adjustment: removed ${earnedPoints} earned points from order ${order.orderNumber}`,
+        );
+      }
     }
 
     return { message: 'Order payment updated', order: this.formatOrder(updatedOrder) };
