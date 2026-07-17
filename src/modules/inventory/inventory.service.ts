@@ -58,13 +58,13 @@ export class InventoryService {
   // Get all inventory items with filters
   async getInventory(query: {
     search?: string;
-    status?: string;
     stockLevel?: string;
     page?: number;
     limit?: number;
   }) {
-    const { search, status, stockLevel, page = 1, limit = 20 } = query;
-    const filter: any = {};
+    const { search, stockLevel, page = 1, limit = 20 } = query;
+    // Inventory only ever shows Active products — Inactive/Draft/Archived are excluded.
+    const filter: any = { status: 'active' };
 
     if (search) {
       filter.$or = [
@@ -73,8 +73,6 @@ export class InventoryService {
         { sku: { $regex: search, $options: 'i' } },
       ];
     }
-
-    if (status) filter.status = status;
 
     if (stockLevel === 'out') filter.stock = 0;
     else if (stockLevel === 'low') {
@@ -182,12 +180,13 @@ export class InventoryService {
 
   // Get inventory stats
   async getStats() {
-    const totalProducts = await this.productModel.countDocuments();
-    const inStock = await this.productModel.countDocuments({ stock: { $gt: 0 } });
-    const outOfStock = await this.productModel.countDocuments({ stock: 0 });
+    const totalProducts = await this.productModel.countDocuments({ status: 'active' });
+    const inStock = await this.productModel.countDocuments({ stock: { $gt: 0 }, status: 'active' });
+    const outOfStock = await this.productModel.countDocuments({ stock: 0, status: 'active' });
     // Low stock: stock > 0 AND stock <= lowStockThreshold (per product)
     const lowStock = await this.productModel.countDocuments({
       $expr: { $and: [{ $gt: ['$stock', 0] }, { $lte: ['$stock', '$lowStockThreshold'] }] },
+      status: 'active',
     });
 
     const totalStockValue = await this.productModel.aggregate([
@@ -229,7 +228,7 @@ export class InventoryService {
   // Export inventory as Excel
   async exportToExcel(): Promise<Buffer> {
     const products = await this.productModel
-      .find()
+      .find({ status: 'active' })
       .select('name nameAr sku stock price pricePerTola pricePerQuarterTola pricePerPiece unit inventoryType status categoryName sales lowStockThreshold image')
       .sort({ name: 1 });
 

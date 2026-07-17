@@ -28,12 +28,11 @@ export class InventoryController {
   @Get()
   getInventory(
     @Query('search') search?: string,
-    @Query('status') status?: string,
     @Query('stockLevel') stockLevel?: string,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.inventoryService.getInventory({ search, status, stockLevel, page, limit });
+    return this.inventoryService.getInventory({ search, stockLevel, page, limit });
   }
 
   // Get inventory stats
