@@ -380,19 +380,21 @@ export class InventoryService {
         const lowStockThreshold = colMap.lowStockThreshold >= 0 ? this.parseCellNumber(row[colMap.lowStockThreshold]) : NaN;
         const imageUrl = colMap.imageUrl >= 0 ? this.parseCellString(row[colMap.imageUrl]) : '';
 
-        // Skip rows without item code or name
-        if (!itemCode && !englishName) {
+        // Skip rows without any matching key
+        if (!itemCode && !englishName && !skuFromFile) {
           results.skipped++;
           continue;
         }
 
-        // Try to find existing product by itemCode first, then by name
+        // Try to find existing product by SKU first, then by itemCode, then by name
         let product: ProductDocument | null = null;
-        if (itemCode) {
-          product = await this.productModel.findOne({ itemCode });
+        if (skuFromFile) {
+          product = await this.productModel.findOne({
+            $or: [{ sku: skuFromFile }, { itemCode: skuFromFile }],
+          });
         }
-        if (!product && skuFromFile) {
-          product = await this.productModel.findOne({ sku: skuFromFile });
+        if (!product && itemCode) {
+          product = await this.productModel.findOne({ itemCode });
         }
         if (!product && englishName) {
           product = await this.productModel.findOne({ name: { $regex: `^${englishName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } });
