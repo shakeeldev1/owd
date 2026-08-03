@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { ConfigService } from '@nestjs/config';
 import { Model } from 'mongoose';
 import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
@@ -14,7 +15,38 @@ export class InventoryService {
     private whatsAppService: WhatsAppService,
     private notificationsService: NotificationsService,
     private mailService: MailService,
+    private configService: ConfigService,
   ) {}
+
+  // Known category-name variants (typos / inconsistent bulk-import casing) that should be
+  // reported as a single unified category instead of showing up as separate duplicates.
+  private readonly categoryNameVariants: Record<string, string> = {
+    'al oud': 'Oud',
+    'oud': 'Oud',
+    'gift boxs': 'Gift Boxes and Giveaways',
+    'gift boxes and giveaways': 'Gift Boxes and Giveaways',
+  };
+
+  private normalizeCategoryName(name?: string): string {
+    const trimmed = String(name || '').trim();
+    if (!trimmed) return trimmed;
+    const key = trimmed.toLowerCase().replace(/\s+/g, ' ');
+    return this.categoryNameVariants[key] || trimmed;
+  }
+
+  private generatePathSegment(value?: string): string {
+    return String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '');
+  }
+
+  private getProductUrl(p: { slug?: string; categorySlug?: string; categoryName?: string }): string {
+    const frontendUrl = (this.configService.get<string>('FRONTEND_URL', 'https://oudalzubarah.com') || '').replace(/\/+$/, '');
+    const categorySegment = p.categorySlug || this.generatePathSegment(p.categoryName);
+    return `${frontendUrl}/shop/${categorySegment ? `${categorySegment}/` : ''}${p.slug || ''}`;
+  }
 
   private normalizeImportHeader(header: any): string {
     return String(header ?? '')
@@ -229,11 +261,11 @@ export class InventoryService {
   async exportToExcel(): Promise<Buffer> {
     const products = await this.productModel
       .find({ status: 'active' })
-      .select('name nameAr sku stock price pricePerTola pricePerQuarterTola pricePerPiece unit inventoryType status categoryName sales lowStockThreshold image')
+      .select('name nameAr sku slug stock price pricePerTola pricePerQuarterTola pricePerPiece unit inventoryType status categoryName categorySlug sales lowStockThreshold image')
       .sort({ name: 1 });
 
-    const columnOrder = ['SKU', 'English Name', 'Arabic Name', 'Unit', 'Inventory Type', 'Available Quantity', 'Price per Unit', 'Price per Tola/Quarter Tola/Piece', 'Category', 'Status', 'Sales', 'Low Stock Threshold', 'Image URL'];
-    
+    const columnOrder = ['SKU', 'Product ID', 'English Name', 'Arabic Name', 'Unit', 'Inventory Type', 'Available Quantity', 'Price per Unit', 'Price per Tola/Quarter Tola/Piece', 'Category', 'Status', 'Sales', 'Low Stock Threshold', 'Image URL', 'Product URL'];
+
     const rows: any[][] = [columnOrder]; // Header row
 
     for (const p of products) {
@@ -248,9 +280,10 @@ export class InventoryService {
       } else if ((unit === 'Tola' || unit === 'kg') && (p as any).pricePerTola) {
         tierPrice = (p as any).pricePerTola;
       }
-      
+
       const row = [
         String(p.sku || ''),
+        String(p._id || ''),
         String(p.name || ''),
         String(p.nameAr || ''),
         String(unit),
@@ -258,11 +291,12 @@ export class InventoryService {
         Number(p.stock) || 0,
         Number(p.price) || 0,
         Number(tierPrice) || 0,
-        String(p.categoryName || ''),
+        this.normalizeCategoryName(p.categoryName),
         String(p.status || ''),
         Number((p as any).sales) || 0,
         Number((p as any).lowStockThreshold) || 10,
         String((p as any).image || ''),
+        this.getProductUrl(p as any),
       ];
       rows.push(row);
     }
@@ -273,6 +307,7 @@ export class InventoryService {
     // Set column widths for better readability
     worksheet['!cols'] = [
       { wch: 15 }, // SKU
+      { wch: 26 }, // Product ID
       { wch: 30 }, // English Name
       { wch: 30 }, // Arabic Name
       { wch: 12 }, // Unit
@@ -285,6 +320,7 @@ export class InventoryService {
       { wch: 10 }, // Sales
       { wch: 18 }, // Low Stock Threshold
       { wch: 40 }, // Image URL
+      { wch: 45 }, // Product URL
     ];
 
     // Set text direction for Arabic columns
