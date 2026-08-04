@@ -158,9 +158,9 @@ export class InventoryService {
     );
     if (!product) throw new NotFoundException('Product not found');
 
-    // Check low stock using per-product threshold
+    // Check low stock using per-product threshold (skip draft/archived products)
     const threshold = (product as any).lowStockThreshold || 10;
-    if (stock <= threshold && stock >= 0) {
+    if (product.status === 'active' && stock <= threshold && stock >= 0) {
       const unit = (product as any).unit || 'units';
       const alertMsg = `Product ${product.name} is almost out of stock. Remaining quantity: ${stock} ${unit.toLowerCase()}.`;
       await this.notificationsService.notifyAdmins(
@@ -192,7 +192,7 @@ export class InventoryService {
       );
       if (product) {
         results.push({ id: product._id, name: product.name, stock: update.stock });
-        if (update.stock <= 5) {
+        if (product.status === 'active' && update.stock <= 5) {
           lowStockAlerts.push(`${product.name} (${update.stock})`);
         }
       }

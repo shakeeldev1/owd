@@ -68,8 +68,9 @@ export class OrdersService implements OnModuleInit {
 
   private async processInventorySummary() {
     try {
-      // Find products at or below their lowStockThreshold (or default 10)
-      const products = await this.productModel.find({}).select('name stock lowStockThreshold').lean();
+      // Find products at or below their lowStockThreshold (or default 10).
+      // Draft/archived products are excluded - they're not part of sellable inventory.
+      const products = await this.productModel.find({ status: 'active' }).select('name stock lowStockThreshold').lean();
       const lowItems: Array<{ name: string; stock: number }> = [];
       for (const p of products) {
         const threshold = (p as any).lowStockThreshold ?? 10;
@@ -1156,8 +1157,8 @@ export class OrdersService implements OnModuleInit {
           { returnDocument: 'after' },
         );
 
-        // Check low stock using per-product threshold
-        if (updatedProduct) {
+        // Check low stock using per-product threshold (skip draft/archived products)
+        if (updatedProduct && updatedProduct.status === 'active') {
           const threshold = (updatedProduct as any).lowStockThreshold || 10;
           // Determine storage unit for alert message
           const storageUnit = inventoryType === 'gram-based' ? 'grams' : unit.toLowerCase();
