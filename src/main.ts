@@ -93,6 +93,7 @@ async function bootstrap() {
       'Accept',
       'Accept-Language',
       'Origin',
+      'X-Guest-Id',
     ],
     optionsSuccessStatus: 204,
   });
@@ -110,7 +111,7 @@ async function bootstrap() {
         if (isAllowedDomain || (allowedOrigins && allowedOrigins.includes(origin))) {
           res.header('Access-Control-Allow-Origin', origin);
           res.header('Access-Control-Allow-Credentials', 'true');
-          res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Accept-Language, Origin');
+          res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept, Accept-Language, Origin, X-Guest-Id');
           res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
         }
       } catch (err) {
