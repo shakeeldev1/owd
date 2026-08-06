@@ -29,6 +29,8 @@ import { SMSService } from '../sms/sms.service';
 import { MailService } from '../auth/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { MetaConversionsService } from '../meta/meta-conversions.service';
+import { AuthService } from '../auth/auth.service';
 import { convertToGrams } from '../../utils/unitConversion';
 import { normalizePhone } from '../../utils/phone';
 
@@ -52,6 +54,8 @@ export class OrdersService implements OnModuleInit {
     private mailService: MailService,
     private notificationsService: NotificationsService,
     private loyaltyService: LoyaltyService,
+    private metaConversionsService: MetaConversionsService,
+    private authService: AuthService,
   ) {}
 
   async onModuleInit() {
@@ -688,9 +692,23 @@ export class OrdersService implements OnModuleInit {
     };
   }
 
-  async createSkipCashCheckoutSession(userId: string, dto: CreateSkipCashCheckoutSessionDto) {
-    const user = await this.userModel.findById(userId);
-    if (!user) throw new NotFoundException('User not found');
+  async createSkipCashCheckoutSession(
+    userId: string | null,
+    dto: CreateSkipCashCheckoutSessionDto,
+    guestId?: string,
+  ) {
+    let user: UserDocument;
+    let guestAccountCreated = false;
+    if (userId) {
+      const existing = await this.userModel.findById(userId);
+      if (!existing) throw new NotFoundException('User not found');
+      user = existing;
+    } else {
+      const guestAccount = await this.findOrCreateGuestAccount(dto.customer, guestId);
+      user = guestAccount.user;
+      guestAccountCreated = guestAccount.isNew;
+    }
+    userId = String(user._id);
 
     await this.ensurePaymentMethodEnabled('skipcash');
     await this.validateStock(dto.items);
@@ -759,6 +777,10 @@ export class OrdersService implements OnModuleInit {
     };
 
     const session = await this.requestSkipCashSession(payload);
+
+    if (guestAccountCreated) {
+      this.sendSetPasswordInvite(user).catch(() => null);
+    }
 
     return {
       checkoutUrl: session.checkoutUrl,
@@ -1205,6 +1227,20 @@ export class OrdersService implements OnModuleInit {
     }
   }
 
+  // Looks up each item's product SKU server-side (never trusts client-supplied SKUs) so
+  // Meta Pixel/CAPI content_ids and the Product Catalog export always agree on the same ID.
+  private async resolveSkuMap(items: Array<{ product?: string }>): Promise<Map<string, string>> {
+    const productIds = items.map((item) => item.product).filter(Boolean) as string[];
+    if (productIds.length === 0) return new Map();
+
+    const products = await this.productModel
+      .find({ _id: { $in: productIds } })
+      .select('_id sku')
+      .lean();
+
+    return new Map(products.map((p: any) => [String(p._id), p.sku || '']));
+  }
+
   private normalizeOrderItemsForCreate(items: Array<{
     product?: string;
     name: string;
@@ -1214,7 +1250,7 @@ export class OrdersService implements OnModuleInit {
     image?: string;
     unit?: string;
     pricePerUnit?: number;
-  }>) {
+  }>, skuMap: Map<string, string> = new Map()) {
     return items.map((item) => ({
       product: item.product ? new Types.ObjectId(item.product) : undefined,
       name: item.name,
@@ -1222,12 +1258,100 @@ export class OrdersService implements OnModuleInit {
       price: item.price,
       quantity: item.quantity,
       image: item.image || '',
+      sku: (item.product && skuMap.get(item.product)) || '',
       unit: item.unit || 'Grams',
       pricePerUnit: item.pricePerUnit || 0,
     }));
   }
 
-  async create(userId: string, dto: CreateOrderDto) {
+  // Re-points a guest's cart (keyed by the anonymous X-Guest-Id header) at the account
+  // created/matched for them during guest checkout, so the standard by-user cart-clear
+  // logic in create() works and no orphaned guest cart is left behind.
+  private async migrateGuestCartToUser(guestId: string | undefined, userId: string): Promise<void> {
+    if (!guestId) return;
+    try {
+      await this.cartModel.updateOne(
+        { guestId },
+        { $set: { user: new Types.ObjectId(userId) }, $unset: { guestId: '' } },
+      );
+    } catch {
+      // The account already has its own cart (rare) — nothing meaningful to merge.
+      await this.cartModel.deleteOne({ guestId }).catch(() => null);
+    }
+  }
+
+  // Finds an existing account by email/phone, or creates a new one from the checkout
+  // details, for a customer who chose to check out without logging in.
+  private async findOrCreateGuestAccount(
+    customer: { name?: string; email?: string; phone?: string } | undefined,
+    guestId?: string,
+  ): Promise<{ user: UserDocument; isNew: boolean }> {
+    const name = customer?.name?.trim();
+    const email = customer?.email?.trim().toLowerCase();
+    const phone = normalizePhone(customer?.phone?.trim() || '');
+
+    if (!name || !email || !phone) {
+      throw new BadRequestException('Name, email and phone are required to check out as a guest');
+    }
+
+    let user = await this.userModel.findOne({ email });
+    if (!user) {
+      user = await this.userModel.findOne({ phone });
+    }
+
+    let isNew = false;
+    if (!user) {
+      const passwordHash = await bcrypt.hash(uuidv4(), 12);
+      user = await this.userModel.create({
+        fullName: name,
+        email,
+        phone,
+        password: passwordHash,
+        role: 'user',
+        isVerified: false,
+        address: '',
+      });
+      isNew = true;
+    }
+
+    await this.migrateGuestCartToUser(guestId, String(user._id));
+
+    return { user, isNew };
+  }
+
+  private async sendSetPasswordInvite(user: UserDocument): Promise<void> {
+    try {
+      const token = this.authService.generateSetPasswordToken(String(user._id));
+      const frontendUrl = (this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000').replace(/\/+$/, '');
+      const link = `${frontendUrl}/set-password?token=${token}`;
+      await this.mailService.sendSetPasswordEmail(user.email, user.fullName, link);
+    } catch (e) {
+      console.error('Failed to send set-password invite email', e);
+    }
+  }
+
+  // Guest checkout: no logged-in user yet. Resolves/creates the customer's account from
+  // the checkout details, then runs the normal order-creation pipeline against it.
+  async createGuestOrder(
+    dto: CreateOrderDto,
+    guestId: string | undefined,
+    requestContext?: { clientIpAddress?: string; clientUserAgent?: string; eventSourceUrl?: string },
+  ) {
+    const { user, isNew } = await this.findOrCreateGuestAccount(dto.customer, guestId);
+    const result = await this.create(String(user._id), dto, requestContext);
+
+    if (isNew) {
+      this.sendSetPasswordInvite(user).catch(() => null);
+    }
+
+    return { ...result, accountCreated: isNew };
+  }
+
+  async create(
+    userId: string,
+    dto: CreateOrderDto,
+    requestContext?: { clientIpAddress?: string; clientUserAgent?: string; eventSourceUrl?: string },
+  ) {
     const user = await this.userModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
 
@@ -1317,7 +1441,8 @@ export class OrdersService implements OnModuleInit {
     const customerName = dto.customer?.name?.trim() || user.fullName;
     const customerEmail = dto.customer?.email?.trim() || user.email;
     const customerPhone = normalizePhone(dto.customer?.phone?.trim() || user.phone || '');
-    const normalizedItems = this.normalizeOrderItemsForCreate(dto.items);
+    const skuMap = await this.resolveSkuMap(dto.items);
+    const normalizedItems = this.normalizeOrderItemsForCreate(dto.items, skuMap);
 
     // Set estimated delivery date
     const estimatedDeliveryDate = new Date();
@@ -1337,7 +1462,7 @@ export class OrdersService implements OnModuleInit {
       if (discount > 0) {
         statusHistory.push({ status: 'discount_applied', timestamp: new Date(), note: discountReason });
       }
-      order = await this.orderModel.create({
+      order = new this.orderModel({
         orderNumber: this.generateOrderNumber(),
         user: new Types.ObjectId(userId),
         customer: {
@@ -1367,6 +1492,8 @@ export class OrdersService implements OnModuleInit {
         paymentCompletedAt: this.isPaidStatus(paymentStatus) ? new Date() : undefined,
         statusHistory,
       });
+      order.metaEventId = `purchase_${order._id.toString()}`;
+      await order.save();
     } catch (error: any) {
       if (this.isDuplicatePaymentIdError(error) && paymentMethod === 'skipcash' && dto.paymentId) {
         const existingOrder = await this.orderModel.findOne({ paymentMethod: 'skipcash', paymentId: dto.paymentId });
@@ -1450,6 +1577,8 @@ export class OrdersService implements OnModuleInit {
       this.logWhatsAppFailure('new order alert', order.orderNumber);
     }
 
+    this.metaConversionsService.sendPurchaseEvent(order, requestContext).catch(() => null);
+
     return { message: 'Order created', order: this.formatOrder(order) };
   }
 
@@ -1497,7 +1626,8 @@ export class OrdersService implements OnModuleInit {
     const paymentMethod = dto.paymentMethod || 'cash';
     const paymentStatus = dto.paymentStatus || (['cash', 'pos_machine', 'card_on_delivery'].includes(paymentMethod) ? 'paid' : 'pending');
     const orderStatus = this.isPaidStatus(paymentStatus) ? 'processing' : 'pending';
-    const normalizedItems = this.normalizeOrderItemsForCreate(dto.items);
+    const adminSkuMap = await this.resolveSkuMap(dto.items);
+    const normalizedItems = this.normalizeOrderItemsForCreate(dto.items, adminSkuMap);
     const salesChannel = dto.salesChannel || 'store';
     const shippingAddress = salesChannel === 'store' ? '' : (dto.shippingAddress || '');
 
@@ -2563,6 +2693,7 @@ export class OrdersService implements OnModuleInit {
     return {
       id: o._id,
       orderNumber: o.orderNumber,
+      metaEventId: o.metaEventId,
       customer: o.customer,
       items: o.items,
       subtotal: o.subtotal,

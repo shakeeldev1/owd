@@ -13,6 +13,7 @@ import { Offer, OfferSchema } from '../offers/schemas/offer.schema';
 import { AuthModule } from '../auth/auth.module';
 import { SMSModule } from '../sms/sms.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
+import { MetaModule } from '../meta/meta.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
     AuthModule,
     SMSModule,
     LoyaltyModule,
+    MetaModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

@@ -2,7 +2,7 @@ import { Controller, Post, Body, UseGuards, Get, Request, Patch, UseInterceptors
 import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service';
-import { SignupDto, LoginDto, VerifyOtpDto, ResendOtpDto, ChangePasswordDto, UpdateProfileDto, UpdateNotificationsDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
+import { SignupDto, LoginDto, VerifyOtpDto, ResendOtpDto, ChangePasswordDto, UpdateProfileDto, UpdateNotificationsDto, ForgotPasswordDto, ResetPasswordDto, SetPasswordDto } from './dto';
 import { UsersService } from '../users/users.service';
 
 @Controller('auth')
@@ -40,6 +40,12 @@ export class AuthController {
   @Post('reset-password')
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
+  }
+
+  // Used by the guest-checkout "set your password" email link.
+  @Post('set-password')
+  setPassword(@Body() dto: SetPasswordDto) {
+    return this.authService.setPassword(dto.token, dto.password);
   }
 
   @UseGuards(AuthGuard('jwt'))

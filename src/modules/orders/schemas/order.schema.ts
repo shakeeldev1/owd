@@ -23,6 +23,9 @@ export class OrderItem {
   @Prop({ default: '' })
   image!: string;
 
+  @Prop({ default: '' })
+  sku?: string;
+
   @Prop({ default: 'Grams', enum: ['Grams', 'Piece', 'Tola', 'Quarter Tola', 'ml', 'kg'] })
   unit?: string;
 
@@ -138,6 +141,11 @@ export class Order {
 
   @Prop({ default: '' })
   discountCode!: string;
+
+  // Deterministic event id shared between the Meta Pixel Purchase event and the
+  // server-side Conversions API Purchase event, so Meta deduplicates the two.
+  @Prop({ default: '' })
+  metaEventId!: string;
 
   // Delivery assignment
   @Prop({ type: Types.ObjectId, ref: 'User' })

@@ -77,6 +77,27 @@ export class MailService {
     await this.sendMail(to, `Reset Your Password - ${this.brandName}`, html);
   }
 
+  async sendSetPasswordEmail(to: string, name: string, link: string): Promise<void> {
+    const html = `
+      <div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
+        <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px;text-align:center;">
+          <h1 style="color:#BA974F;margin:0;font-size:24px;">${this.brandName}</h1>
+          <p style="color:#94a3b8;margin:8px 0 0;">Set Up Your Account</p>
+        </div>
+        <div style="padding:32px;">
+          <h2 style="color:#1a1a2e;margin:0 0 16px;">Thank you for your order, ${name}!</h2>
+          <p style="color:#64748b;line-height:1.6;">We've created an account for you using the details from your checkout, so you can track this order and check out faster next time. Set a password to activate it:</p>
+          <div style="text-align:center;margin:32px 0;">
+            <a href="${link}" style="background:#BA974F;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:bold;display:inline-block;">Set Your Password</a>
+          </div>
+          <p style="color:#64748b;line-height:1.6;">This link expires in <strong>48 hours</strong>.</p>
+          <p style="color:#94a3b8;font-size:12px;margin-top:24px;">If the button doesn't work, copy and paste this link into your browser:<br/>${link}</p>
+        </div>
+      </div>
+    `;
+    await this.sendMail(to, `Set Your Password - ${this.brandName}`, html);
+  }
+
   async sendOrderConfirmation(to: string, name: string, orderNumber: string, total: number, items: any[]): Promise<void> {
     const itemsHtml = items.map(item => `
       <tr>

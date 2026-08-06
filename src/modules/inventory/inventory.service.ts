@@ -6,6 +6,7 @@ import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MailService } from '../auth/mail.service';
+import { normalizeCategoryName, buildProductUrl } from '../../utils/productCatalog';
 import * as XLSX from 'xlsx';
 
 @Injectable()
@@ -18,34 +19,13 @@ export class InventoryService {
     private configService: ConfigService,
   ) {}
 
-  // Known category-name variants (typos / inconsistent bulk-import casing) that should be
-  // reported as a single unified category instead of showing up as separate duplicates.
-  private readonly categoryNameVariants: Record<string, string> = {
-    'al oud': 'Oud',
-    'oud': 'Oud',
-    'gift boxs': 'Gift Boxes and Giveaways',
-    'gift boxes and giveaways': 'Gift Boxes and Giveaways',
-  };
-
   private normalizeCategoryName(name?: string): string {
-    const trimmed = String(name || '').trim();
-    if (!trimmed) return trimmed;
-    const key = trimmed.toLowerCase().replace(/\s+/g, ' ');
-    return this.categoryNameVariants[key] || trimmed;
-  }
-
-  private generatePathSegment(value?: string): string {
-    return String(value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
+    return normalizeCategoryName(name);
   }
 
   private getProductUrl(p: { slug?: string; categorySlug?: string; categoryName?: string }): string {
-    const frontendUrl = (this.configService.get<string>('FRONTEND_URL', 'https://oudalzubarah.com') || '').replace(/\/+$/, '');
-    const categorySegment = p.categorySlug || this.generatePathSegment(p.categoryName);
-    return `${frontendUrl}/shop/${categorySegment ? `${categorySegment}/` : ''}${p.slug || ''}`;
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'https://oudalzubarah.com');
+    return buildProductUrl(frontendUrl, p);
   }
 
   private normalizeImportHeader(header: any): string {
@@ -140,7 +120,7 @@ export class InventoryService {
         status: p.status,
         image: p.image,
         sales: p.sales,
-        categoryName: p.categoryName,
+        categoryName: this.normalizeCategoryName(p.categoryName),
         lowStockThreshold: (p as any).lowStockThreshold,
       })),
       total,

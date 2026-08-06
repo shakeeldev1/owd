@@ -12,6 +12,7 @@ import { UsersModule } from '../users/users.module';
 import { SMSModule } from '../sms/sms.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { RolesGuard } from './roles.guard';
+import { OptionalJwtAuthGuard } from './optional-jwt.guard';
 
 @Module({
   imports: [
@@ -30,7 +31,7 @@ import { RolesGuard } from './roles.guard';
     WhatsAppModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, MailService, RolesGuard],
-  exports: [AuthService, JwtStrategy, PassportModule, MailService, RolesGuard],
+  providers: [AuthService, JwtStrategy, MailService, RolesGuard, OptionalJwtAuthGuard],
+  exports: [AuthService, JwtStrategy, PassportModule, MailService, RolesGuard, OptionalJwtAuthGuard],
 })
 export class AuthModule {}

@@ -22,6 +22,7 @@ import { LoyaltyModule } from './modules/loyalty/loyalty.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { SectionsModule } from './modules/sections/sections.module';
+import { MetaModule } from './modules/meta/meta.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { SectionsModule } from './modules/sections/sections.module';
     LoyaltyModule,
     InventoryModule,
     SettingsModule,
+    MetaModule,
   ],
   controllers: [AppController],
   providers: [AppService],

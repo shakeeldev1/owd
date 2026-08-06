@@ -12,23 +12,36 @@ import {
   CreateSkipCashCheckoutSessionDto,
 } from './dto/order.dto';
 import { RolesGuard, Roles } from '../auth/roles.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt.guard';
 
 @Controller('orders')
 export class OrdersController {
   constructor(private ordersService: OrdersService) {}
 
-  // User: Create order
+  // User or guest: Create order. Guests (no JWT) must supply full customer contact
+  // details in the body; an account is created for them automatically.
   @Post()
-  @UseGuards(AuthGuard('jwt'))
-  create(@Request() req: any, @Body() dto: CreateOrderDto) {
-    return this.ordersService.create(req.user._id, dto);
+  @UseGuards(OptionalJwtAuthGuard)
+  create(@Request() req: any, @Body() dto: CreateOrderDto, @Headers('x-guest-id') guestId?: string) {
+    const requestContext = {
+      clientIpAddress: req.ip,
+      clientUserAgent: req.headers?.['user-agent'],
+    };
+    if (req.user?._id) {
+      return this.ordersService.create(req.user._id, dto, requestContext);
+    }
+    return this.ordersService.createGuestOrder(dto, guestId, requestContext);
   }
 
-  // User: Create SkipCash session directly from checkout data (order created only after successful payment)
+  // User or guest: Create SkipCash session directly from checkout data (order created only after successful payment)
   @Post('skipcash/session')
-  @UseGuards(AuthGuard('jwt'))
-  createSkipCashCheckoutSession(@Request() req: any, @Body() dto: CreateSkipCashCheckoutSessionDto) {
-    return this.ordersService.createSkipCashCheckoutSession(req.user._id, dto);
+  @UseGuards(OptionalJwtAuthGuard)
+  createSkipCashCheckoutSession(
+    @Request() req: any,
+    @Body() dto: CreateSkipCashCheckoutSessionDto,
+    @Headers('x-guest-id') guestId?: string,
+  ) {
+    return this.ordersService.createSkipCashCheckoutSession(req.user?._id || null, dto, guestId);
   }
 
   // User: Create SkipCash payment session for an order

@@ -6,6 +6,11 @@ import { Product, ProductDocument } from '../products/schemas/product.schema';
 import { AddToCartDto, UpdateCartItemDto } from './dto/cart.dto';
 import { convertToGrams } from '../../utils/unitConversion';
 
+export interface CartIdentity {
+  userId?: string;
+  guestId?: string;
+}
+
 @Injectable()
 export class CartService {
   constructor(
@@ -81,17 +86,20 @@ export class CartService {
     };
   }
 
-  private async getOrCreateCart(userId: string): Promise<CartDocument> {
+  private async getOrCreateCart(identity: CartIdentity): Promise<CartDocument> {
+    const filter = identity.userId
+      ? { user: new Types.ObjectId(identity.userId) }
+      : { guestId: identity.guestId };
     const cart = await this.cartModel.findOneAndUpdate(
-      { user: new Types.ObjectId(userId) },
-      { $setOnInsert: { items: [], wishlist: [] } },
+      filter,
+      { $setOnInsert: { ...filter, items: [], wishlist: [] } },
       { upsert: true, returnDocument: 'after' },
     );
     return cart;
   }
 
-  async getCart(userId: string) {
-    const cart = await this.getOrCreateCart(userId);
+  async getCart(identity: CartIdentity) {
+    const cart = await this.getOrCreateCart(identity);
     const productIds = cart.items.map((item) => item.product).filter(Boolean);
     const products = productIds.length > 0
       ? await this.productModel.find({ _id: { $in: productIds } }).lean()
@@ -107,6 +115,7 @@ export class CartService {
         productId: item.product,
         name: product?.name || item.name,
         nameAr: product?.nameAr || item.nameAr,
+        sku: product?.sku || (item as any).sku || '',
         price: pricing.price,
         originalPrice: pricing.originalPrice,
         offerPrice: pricing.offerPrice,
@@ -132,11 +141,11 @@ export class CartService {
     };
   }
 
-  async addToCart(userId: string, dto: AddToCartDto) {
+  async addToCart(identity: CartIdentity, dto: AddToCartDto) {
     const product = await this.productModel.findById(dto.productId);
     if (!product) throw new NotFoundException('Product not found');
 
-    const cart = await this.getOrCreateCart(userId);
+    const cart = await this.getOrCreateCart(identity);
     const existingIndex = cart.items.findIndex(
       (item) => item.product.toString() === dto.productId,
     );
@@ -158,42 +167,43 @@ export class CartService {
         quantity: dto.quantity,
         image: product.image,
         slug: product.slug,
+        sku: product.sku,
         unit: unit,
         pricePerUnit: product.price,
       } as any);
     }
 
     await cart.save();
-    return { message: 'Added to cart', cart: await this.getCart(userId) };
+    return { message: 'Added to cart', cart: await this.getCart(identity) };
   }
 
-  async updateCartItem(userId: string, productId: string, dto: UpdateCartItemDto) {
-    const cart = await this.getOrCreateCart(userId);
+  async updateCartItem(identity: CartIdentity, productId: string, dto: UpdateCartItemDto) {
+    const cart = await this.getOrCreateCart(identity);
     const item = cart.items.find((i) => i.product.toString() === productId);
     if (!item) throw new NotFoundException('Item not in cart');
 
     item.quantity = dto.quantity;
     await cart.save();
-    return { message: 'Cart updated', cart: await this.getCart(userId) };
+    return { message: 'Cart updated', cart: await this.getCart(identity) };
   }
 
-  async removeFromCart(userId: string, productId: string) {
-    const cart = await this.getOrCreateCart(userId);
+  async removeFromCart(identity: CartIdentity, productId: string) {
+    const cart = await this.getOrCreateCart(identity);
     cart.items = cart.items.filter((i) => i.product.toString() !== productId);
     await cart.save();
-    return { message: 'Removed from cart', cart: await this.getCart(userId) };
+    return { message: 'Removed from cart', cart: await this.getCart(identity) };
   }
 
-  async clearCart(userId: string) {
-    const cart = await this.getOrCreateCart(userId);
+  async clearCart(identity: CartIdentity) {
+    const cart = await this.getOrCreateCart(identity);
     cart.items = [];
     await cart.save();
     return { message: 'Cart cleared' };
   }
 
-  // Wishlist
+  // Wishlist (logged-in users only)
   async getWishlist(userId: string) {
-    const cart = await this.getOrCreateCart(userId);
+    const cart = await this.getOrCreateCart({ userId });
     const products = await this.productModel.find({
       _id: { $in: cart.wishlist },
       status: 'active',
@@ -203,6 +213,7 @@ export class CartService {
       _id: p._id,
       name: p.name,
       nameAr: p.nameAr,
+      sku: p.sku,
       price: this.resolveDisplayPrice(p as any).price,
       originalPrice: this.resolveDisplayPrice(p as any).originalPrice,
       offerPrice: this.resolveDisplayPrice(p as any).offerPrice,
@@ -218,7 +229,7 @@ export class CartService {
     const product = await this.productModel.findById(productId);
     if (!product) throw new NotFoundException('Product not found');
 
-    const cart = await this.getOrCreateCart(userId);
+    const cart = await this.getOrCreateCart({ userId });
     const pid = new Types.ObjectId(productId);
     if (!cart.wishlist.some((id) => id.toString() === productId)) {
       cart.wishlist.push(pid);
@@ -228,9 +239,25 @@ export class CartService {
   }
 
   async removeFromWishlist(userId: string, productId: string) {
-    const cart = await this.getOrCreateCart(userId);
+    const cart = await this.getOrCreateCart({ userId });
     cart.wishlist = cart.wishlist.filter((id) => id.toString() !== productId);
     await cart.save();
     return { message: 'Removed from wishlist' };
+  }
+
+  // Called once a guest's cart identity resolves to a real account (guest checkout,
+  // or logging in with a cart already in progress) so the cart isn't orphaned under
+  // the old guestId. Falls back to leaving the guest cart in place if the account
+  // already has its own cart (rare: returning customer who forgot to log in).
+  async migrateGuestCartToUser(guestId: string, userId: string): Promise<void> {
+    if (!guestId) return;
+    try {
+      await this.cartModel.updateOne(
+        { guestId },
+        { $set: { user: new Types.ObjectId(userId) }, $unset: { guestId: '' } },
+      );
+    } catch {
+      await this.cartModel.deleteOne({ guestId }).catch(() => null);
+    }
   }
 }

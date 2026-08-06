@@ -306,4 +306,46 @@ export class AuthService {
 
     return { message: 'تم إعادة تعيين كلمة المرور بنجاح. يمكنك الآن تسجيل الدخول برمز المرور الجديد.' };
   }
+
+  // Guest-checkout accounts are created with an unusable random password; this token
+  // lets the customer claim the account by setting their own password via an emailed link.
+  generateSetPasswordToken(userId: string): string {
+    return this.jwtService.sign(
+      { sub: userId, purpose: 'set-password' },
+      { expiresIn: '48h' },
+    );
+  }
+
+  async setPassword(token: string, newPassword: string) {
+    let payload: { sub: string; purpose: string };
+    try {
+      payload = this.jwtService.verify(token);
+    } catch {
+      throw new BadRequestException('This link is invalid or has expired. Please request a new one.');
+    }
+
+    if (payload.purpose !== 'set-password') {
+      throw new BadRequestException('This link is invalid or has expired. Please request a new one.');
+    }
+
+    const user = await this.userModel.findById(payload.sub);
+    if (!user) {
+      throw new BadRequestException('This link is invalid or has expired. Please request a new one.');
+    }
+
+    user.password = await bcrypt.hash(newPassword, 12);
+    user.isVerified = true;
+    await user.save();
+
+    return {
+      message: 'Password set successfully.',
+      token: this.generateToken(user),
+      user: {
+        id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+      },
+    };
+  }
 }

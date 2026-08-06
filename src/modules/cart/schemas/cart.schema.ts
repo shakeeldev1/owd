@@ -26,6 +26,9 @@ export class CartItem {
   @Prop({ default: '' })
   slug: string;
 
+  @Prop({ default: '' })
+  sku?: string;
+
   @Prop({ default: 'Grams', enum: ['Grams', 'Piece', 'Tola', 'Quarter Tola', 'ml', 'kg'] })
   unit?: string;
 
@@ -35,8 +38,12 @@ export class CartItem {
 
 @Schema({ timestamps: true })
 export class Cart {
-  @Prop({ type: Types.ObjectId, ref: 'User', required: true, unique: true })
-  user: Types.ObjectId;
+  // Either `user` (logged-in) or `guestId` (anonymous, from the X-Guest-Id header) is set.
+  @Prop({ type: Types.ObjectId, ref: 'User', unique: true, sparse: true })
+  user?: Types.ObjectId;
+
+  @Prop({ type: String, unique: true, sparse: true })
+  guestId?: string;
 
   @Prop({ type: [CartItem], default: [] })
   items: CartItem[];

@@ -1,17 +1,20 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { ConfigService } from '@nestjs/config';
 import { Model, Types } from 'mongoose';
 import { Product, ProductDocument } from './schemas/product.schema';
 import { CreateProductDto, UpdateProductDto, AddProductReviewDto } from './dto/product.dto';
 import { Category, CategoryDocument } from '../categories/schemas/category.schema';
 import * as XLSX from 'xlsx';
 import { UNIT_CONVERSION_FACTORS, convertToGrams } from '../../utils/unitConversion';
+import { normalizeCategoryName, buildProductUrl } from '../../utils/productCatalog';
 
 @Injectable()
 export class ProductsService {
   constructor(
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
     @InjectModel(Category.name) private categoryModel: Model<CategoryDocument>,
+    private configService: ConfigService,
   ) {}
 
   private generateSlug(name: string): string {
@@ -388,13 +391,14 @@ export class ProductsService {
   async exportToExcel(res: any) {
     const products = await this.productModel
       .find({ status: 'active' })
-      .select('name nameAr sku stock price originalPrice weight unit pricePerTola pricePerQuarterTola pricePerPiece lowStockThreshold image images description descriptionAr categoryName categorySlug rating reviews sales badge badgeAr isNewArrival isBestseller isLimitedEdition isFeatured status')
+      .select('name nameAr sku slug stock price originalPrice weight unit pricePerTola pricePerQuarterTola pricePerPiece lowStockThreshold image images description descriptionAr categoryName categorySlug rating reviews sales badge badgeAr isNewArrival isBestseller isLimitedEdition isFeatured status')
       .sort({ name: 1 });
 
-    const columnOrder = ['SKU', 'English Name', 'Arabic Name', 'Category', 'Category Slug', 'Price (QAR)', 'Original Price (QAR)', 'Unit', 'Weight (grams)', 'Price per Tola/Quarter Tola/Piece (QAR)', 'Stock Available', 'Low Stock Threshold', 'Total Sales', 'Rating', 'Total Reviews', 'Main Image URL', 'All Images (comma separated)', 'English Badge', 'Arabic Badge', 'New Arrival', 'Bestseller', 'Limited Edition', 'Featured', 'Status', 'English Description', 'Arabic Description'];
+    const columnOrder = ['Product ID', 'SKU', 'English Name', 'Arabic Name', 'Category', 'Category Slug', 'Price (QAR)', 'Original Price (QAR)', 'Unit', 'Weight (grams)', 'Price per Tola/Quarter Tola/Piece (QAR)', 'Stock Available', 'Low Stock Threshold', 'Total Sales', 'Rating', 'Total Reviews', 'Main Image URL', 'All Images (comma separated)', 'English Badge', 'Arabic Badge', 'New Arrival', 'Bestseller', 'Limited Edition', 'Featured', 'Status', 'Product URL', 'English Description', 'Arabic Description'];
 
     const rows: any[][] = [columnOrder]; // Header row
-    
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'https://oudalzubarah.com');
+
     for (const p of products) {
       // Use pricePerPiece for Piece units, pricePerQuarterTola for Quarter Tola, pricePerTola for Tola/kg units, otherwise use price
       const unit = (p as any).unit || 'Grams';
@@ -407,11 +411,14 @@ export class ProductsService {
         tierPrice = (p as any).pricePerTola;
       }
       
+      // Product ID: the same identifier sent as content_ids to Meta Pixel/CAPI, so the
+      // catalog feed and ad events always match on the same value.
       const row = [
+        String(p.sku || ''),
         String(p.sku || ''),
         String(p.name || ''),
         String(p.nameAr || ''),
-        String(p.categoryName || ''),
+        normalizeCategoryName(p.categoryName),
         String((p as any).categorySlug || this.generatePathSegment(p.categoryName)),
         Number(p.price) || 0,
         Number((p as any).originalPrice) || 0,
@@ -432,6 +439,7 @@ export class ProductsService {
         ((p as any).isLimitedEdition ? 'Yes' : 'No'),
         ((p as any).isFeatured ? 'Yes' : 'No'),
         String(p.status || 'active'),
+        buildProductUrl(frontendUrl, p as any),
         String((p as any).description || ''),
         String((p as any).descriptionAr || ''),
       ];
@@ -442,6 +450,7 @@ export class ProductsService {
     const worksheet = XLSX.utils.aoa_to_sheet(rows);
 
     worksheet['!cols'] = [
+      { wch: 15 },  // Product ID
       { wch: 15 },  // SKU
       { wch: 28 },  // English Name
       { wch: 28 },  // Arabic Name
@@ -466,6 +475,7 @@ export class ProductsService {
       { wch: 16 },  // Limited Edition
       { wch: 12 },  // Featured
       { wch: 12 },  // Status
+      { wch: 50 },  // Product URL
       { wch: 45 },  // English Description
       { wch: 45 },  // Arabic Description
     ];
@@ -474,7 +484,7 @@ export class ProductsService {
 
     const buffer = Buffer.from(XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx', cellDates: false }));
     const date = new Date().toISOString().split('T')[0];
-    
+
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=products-export-${date}.xlsx`);
     return res.send(buffer);
@@ -566,7 +576,9 @@ export class ProductsService {
           const sku = String(getSafely('SKU') || '').trim();
           const name = String(getSafely('English Name') || '').trim();
           const nameAr = String(getSafely('Arabic Name') || '').trim();
-          const categoryName = String(getSafely('Category') || '').trim();
+          // Normalize known category-name variants (e.g. "GIFT BOXS", "AL OUD") to their
+          // canonical form so re-imports don't keep reintroducing duplicate categories.
+          const categoryName = normalizeCategoryName(String(getSafely('Category') || '').trim());
           const priceStr = String(getSafely('Price (QAR)') || '0').trim();
           const unitStr = String(getSafely('Unit') || 'Grams').trim();
           const stockStr = String(getSafely('Stock Available') || '0').trim();
