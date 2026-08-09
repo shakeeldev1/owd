@@ -44,6 +44,12 @@ export class OrdersController {
     return this.ordersService.createSkipCashCheckoutSession(req.user?._id || null, dto, guestId);
   }
 
+  // Public: Resolve a SkipCash order after payment confirmation
+  @Get('skipcash/payment/:paymentId')
+  findSkipCashOrderByPaymentId(@Param('paymentId') paymentId: string) {
+    return this.ordersService.findSkipCashOrderByPaymentId(paymentId);
+  }
+
   // User: Create SkipCash payment session for an order
   @Post(':id/skipcash/session')
   @UseGuards(AuthGuard('jwt'))

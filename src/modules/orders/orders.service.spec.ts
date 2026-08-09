@@ -133,6 +133,53 @@ describe('OrdersService reliability guards', () => {
     expect(createSpy).not.toHaveBeenCalled();
   });
 
+  it('finds a SkipCash order by paymentId for the success page lookup', async () => {
+    const existingOrder = {
+      _id: 'order-lookup-1',
+      orderNumber: 'ORD-202603-2001',
+      paymentMethod: 'skipcash',
+      paymentId: 'payment-lookup-1',
+      customer: { name: 'Jane', email: 'jane@example.com', phone: '5551111' },
+      items: [],
+      subtotal: 25,
+      discount: 0,
+      shippingCost: 0,
+      total: 25,
+      status: 'pending',
+      paymentStatus: 'paid',
+      salesChannel: 'website',
+      paymentCompletedAt: new Date(),
+      reviewRequestScheduledAt: undefined,
+      shippingAddress: 'Doha',
+      trackingNumber: '',
+      notes: '',
+      discountCode: '',
+      deliveryStaff: null,
+      assignedAt: undefined,
+      deliveredAt: undefined,
+      statusHistory: [],
+      feedbackRequested: false,
+      feedbackRating: undefined,
+      feedbackComment: '',
+      loyaltyPointsEarned: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    orderModel.findOne.mockResolvedValueOnce(existingOrder);
+
+    const result = await service.findSkipCashOrderByPaymentId('payment-lookup-1');
+
+    expect(result).toEqual({
+      found: true,
+      order: expect.objectContaining({
+        orderNumber: 'ORD-202603-2001',
+        paymentId: 'payment-lookup-1',
+        paymentMethod: 'skipcash',
+      }),
+    });
+  });
+
   it('throws a conflict when the order status changed before the conditional update completes', async () => {
     const baseOrder = {
       _id: 'order-2',

@@ -1000,6 +1000,23 @@ export class OrdersService implements OnModuleInit {
     };
   }
 
+  async findSkipCashOrderByPaymentId(paymentId: string) {
+    const normalizedPaymentId = String(paymentId || '').trim();
+    if (!normalizedPaymentId) {
+      return { found: false };
+    }
+
+    const order = await this.orderModel.findOne({ paymentId: normalizedPaymentId, paymentMethod: 'skipcash' });
+    if (!order) {
+      return { found: false };
+    }
+
+    return {
+      found: true,
+      order: this.formatOrder(order),
+    };
+  }
+
   async deleteOrder(
     id: string,
     auditContext?: {
