@@ -1509,7 +1509,10 @@ export class OrdersService implements OnModuleInit {
         paymentCompletedAt: this.isPaidStatus(paymentStatus) ? new Date() : undefined,
         statusHistory,
       });
-      order.metaEventId = `purchase_${order._id.toString()}`;
+      // Must be the exact order id — the browser pixel fires eventID: order.metaEventId
+      // and the Conversions API call below uses the same value as event_id, so Meta
+      // deduplicates the two into a single Purchase event.
+      order.metaEventId = order._id.toString();
       await order.save();
     } catch (error: any) {
       if (this.isDuplicatePaymentIdError(error) && paymentMethod === 'skipcash' && dto.paymentId) {

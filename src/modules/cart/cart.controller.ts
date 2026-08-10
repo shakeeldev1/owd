@@ -1,8 +1,15 @@
 import { BadRequestException, Controller, Get, Post, Patch, Delete, Body, Param, UseGuards, Request, Headers } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { OptionalJwtAuthGuard } from '../auth/optional-jwt.guard';
 import { CartService, CartIdentity } from './cart.service';
 import { AddToCartDto, UpdateCartItemDto } from './dto/cart.dto';
+
+// Rapid repeated clicks (double-clicks, stuck taps, bots) could otherwise fire the same
+// mutation dozens of times before the UI's own debounce catches up — this is the
+// server-side backstop the client asked for. Keyed per shopper (see app.module.ts
+// getTracker), so it never blocks other customers sharing an IP/NAT.
+const CART_MUTATION_THROTTLE = { default: { limit: 15, ttl: 10_000 } };
 
 @Controller('cart')
 export class CartController {
@@ -25,13 +32,15 @@ export class CartController {
   }
 
   @Post()
-  @UseGuards(OptionalJwtAuthGuard)
+  @UseGuards(OptionalJwtAuthGuard, ThrottlerGuard)
+  @Throttle(CART_MUTATION_THROTTLE)
   addToCart(@Request() req: any, @Body() dto: AddToCartDto, @Headers('x-guest-id') guestId?: string) {
     return this.cartService.addToCart(this.resolveIdentity(req, guestId), dto);
   }
 
   @Patch(':productId')
-  @UseGuards(OptionalJwtAuthGuard)
+  @UseGuards(OptionalJwtAuthGuard, ThrottlerGuard)
+  @Throttle(CART_MUTATION_THROTTLE)
   updateItem(
     @Request() req: any,
     @Param('productId') productId: string,
@@ -42,13 +51,15 @@ export class CartController {
   }
 
   @Delete(':productId')
-  @UseGuards(OptionalJwtAuthGuard)
+  @UseGuards(OptionalJwtAuthGuard, ThrottlerGuard)
+  @Throttle(CART_MUTATION_THROTTLE)
   removeItem(@Request() req: any, @Param('productId') productId: string, @Headers('x-guest-id') guestId?: string) {
     return this.cartService.removeFromCart(this.resolveIdentity(req, guestId), productId);
   }
 
   @Delete()
-  @UseGuards(OptionalJwtAuthGuard)
+  @UseGuards(OptionalJwtAuthGuard, ThrottlerGuard)
+  @Throttle(CART_MUTATION_THROTTLE)
   clearCart(@Request() req: any, @Headers('x-guest-id') guestId?: string) {
     return this.cartService.clearCart(this.resolveIdentity(req, guestId));
   }
@@ -61,13 +72,15 @@ export class CartController {
   }
 
   @Post('wishlist/:productId')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), ThrottlerGuard)
+  @Throttle(CART_MUTATION_THROTTLE)
   addToWishlist(@Request() req: any, @Param('productId') productId: string) {
     return this.cartService.addToWishlist(req.user._id, productId);
   }
 
   @Delete('wishlist/:productId')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt'), ThrottlerGuard)
+  @Throttle(CART_MUTATION_THROTTLE)
   removeFromWishlist(@Request() req: any, @Param('productId') productId: string) {
     return this.cartService.removeFromWishlist(req.user._id, productId);
   }

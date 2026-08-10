@@ -38,7 +38,15 @@ import { MetaModule } from './modules/meta/meta.module';
       isGlobal: true,
       ttl: 60 * 1000, // 60 seconds default cache
     }),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60000, limit: 100 }],
+      // Key throttling on the logged-in user / guest cart identity rather than raw IP,
+      // so one shopper hammering an endpoint doesn't collaterally block other customers
+      // behind the same NAT/IP, and switching networks doesn't reset their own limit.
+      getTracker: (req: any) => {
+        return req.user?._id?.toString() || req.headers?.['x-guest-id'] || req.ip;
+      },
+    }),
     WhatsAppModule,
     SMSModule,
     NotificationsModule,
