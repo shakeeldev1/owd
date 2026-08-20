@@ -72,6 +72,13 @@ export class OrdersController {
       || '',
     );
 
+    // Logged unconditionally, before the key check, so a rejected real SkipCash call
+    // still tells us exactly which header/body field they actually use to authenticate —
+    // we're currently only guessing at header names.
+    console.log('[SkipCash Webhook] Incoming request headers:', JSON.stringify(headers));
+    console.log('[SkipCash Webhook] Incoming request body:', JSON.stringify(payload));
+    console.log('[SkipCash Webhook] Extracted webhookKey candidate:', webhookKey);
+
     return this.ordersService.processSkipCashWebhook(payload, webhookKey);
   }
 
