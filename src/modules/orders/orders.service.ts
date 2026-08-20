@@ -9,6 +9,7 @@ import * as bcrypt from 'bcryptjs';
 import { Order, OrderDocument } from './schemas/order.schema';
 import { Review, ReviewDocument } from './schemas/review.schema';
 import { AuditLog, AuditLogDocument } from './schemas/audit-log.schema';
+import { SkipCashDraft, SkipCashDraftDocument } from './schemas/skipcash-draft.schema';
 import {
   CreateOrderDto,
   AdminCreateOrderDto,
@@ -48,6 +49,7 @@ export class OrdersService implements OnModuleInit {
     @InjectModel(Cart.name) private cartModel: Model<CartDocument>,
     @InjectModel(Settings.name) private settingsModel: Model<SettingsDocument>,
     @InjectModel(Offer.name) private offerModel: Model<OfferDocument>,
+    @InjectModel(SkipCashDraft.name) private skipCashDraftModel: Model<SkipCashDraftDocument>,
     private configService: ConfigService,
     private whatsAppService: WhatsAppService,
     private smsService: SMSService,
@@ -363,8 +365,16 @@ export class OrdersService implements OnModuleInit {
   }
 
   private extractSkipCashOrderRef(payload: any): string {
+    // Confirmed from SkipCash's real return-URL redirect params: they use `transId` and
+    // `custom1` (both carrying our draftReference/TransactionId) — not orderId/order_id
+    // as originally guessed. Keep the older guesses too in case the webhook payload shape
+    // differs slightly from the redirect's.
     return String(
-      payload?.orderId
+      payload?.transId
+      || payload?.TransId
+      || payload?.custom1
+      || payload?.Custom1
+      || payload?.orderId
       || payload?.order_id
       || payload?.merchantOrderId
       || payload?.merchant_order_id
@@ -372,12 +382,9 @@ export class OrdersService implements OnModuleInit {
       || payload?.reference_id
       || payload?.metadata?.orderId
       || payload?.metadata?.order_id
+      || payload?.metadata?.draftReference
       || '',
     );
-  }
-
-  private extractSkipCashMetadata(payload: any): any {
-    return payload?.metadata || payload?.metaData || payload?.merchantMetaData || payload?.merchant_metadata || {};
   }
 
   private buildSkipCashEndpointCandidates(configuredApiUrl: string): string[] {
@@ -464,7 +471,9 @@ export class OrdersService implements OnModuleInit {
     }
 
     if (this.isPublicBackendUrl(backendUrl)) {
-      return `${backendUrl.replace(/\/+$/, '')}/api/orders/skipcash/webhook`;
+      // No '/api' prefix — Nest's global prefix is disabled in main.ts, so every real
+      // route (including this one) is served unprefixed, e.g. api.oudalzubarah.com/orders/...
+      return `${backendUrl.replace(/\/+$/, '')}/orders/skipcash/webhook`;
     }
 
     // In localhost development, SkipCash session can still be created without webhook_url.
@@ -737,7 +746,14 @@ export class OrdersService implements OnModuleInit {
     });
     const webhookUrl = this.resolveSkipCashWebhookUrl(backendUrl);
 
-    const draftOrder = {
+    // SkipCash's actual payments API only accepts a small fixed set of fields (see
+    // requestSkipCashSession) and only ever echoes back Custom1/TransactionId — it does
+    // NOT support arbitrary metadata/webhookUrl passthrough, despite what this payload
+    // object below might suggest. So the full order (items, customer, discounts) can't be
+    // round-tripped through SkipCash itself; we persist it ourselves, keyed by the short
+    // draftReference, and look it up by that reference when the webhook reports payment.
+    await this.skipCashDraftModel.create({
+      draftReference,
       userId,
       orderData: {
         items: dto.items,
@@ -749,8 +765,7 @@ export class OrdersService implements OnModuleInit {
         notes: dto.notes || '',
         customer: dto.customer,
       },
-    };
-    const draftToken = Buffer.from(JSON.stringify(draftOrder), 'utf8').toString('base64');
+    });
 
     const payload = {
       clientId: this.getSkipCashClientIdentifiers()[0] || '',
@@ -766,14 +781,8 @@ export class OrdersService implements OnModuleInit {
       ...(successUrl ? { successUrl } : {}),
       ...(cancelUrl ? { cancelUrl } : {}),
       ...(webhookUrl ? { webhookUrl } : {}),
-      metadata: {
-        draftReference,
-        draftToken,
-      },
-      merchantMetaData: {
-        draftReference,
-        draftToken,
-      },
+      metadata: { draftReference },
+      merchantMetaData: { draftReference },
     };
 
     const session = await this.requestSkipCashSession(payload);
@@ -862,19 +871,20 @@ export class OrdersService implements OnModuleInit {
       throw new BadRequestException('Invalid SkipCash webhook key');
     }
 
-    const metadata = this.extractSkipCashMetadata(payload);
-    const draftTokenFromMetadata = String(metadata?.draftToken || metadata?.draft_token || '');
     const orderRef = this.extractSkipCashOrderRef(payload);
-    
+
     console.log('[SkipCash Webhook] Processing:', {
       orderRef,
-      hasDraftToken: !!draftTokenFromMetadata,
       status: payload?.status || payload?.paymentStatus || 'unknown',
     });
+    // Full payload so we can see SkipCash's exact field names if extraction below ever
+    // misses a transaction-id/status field again (card numbers arrive pre-masked from
+    // SkipCash, so this is safe to log in full).
+    console.log('[SkipCash Webhook] Raw payload:', JSON.stringify(payload));
 
-    if (!orderRef && !draftTokenFromMetadata) {
-      console.error('[SkipCash Webhook] Missing order reference and draft token');
-      throw new BadRequestException('SkipCash webhook payload missing order reference and draft token');
+    if (!orderRef) {
+      console.error('[SkipCash Webhook] Missing order reference (transId/custom1) in payload');
+      throw new BadRequestException('SkipCash webhook payload missing order reference');
     }
 
     let order = Types.ObjectId.isValid(orderRef)
@@ -885,11 +895,18 @@ export class OrdersService implements OnModuleInit {
       order = await this.orderModel.findOne({ orderNumber: orderRef });
     }
 
-    const paymentId = String(
+    let paymentId = String(
       payload?.paymentId
       || payload?.payment_id
       || payload?.transactionId
       || payload?.transaction_id
+      || payload?.transactionCode
+      || payload?.transaction_code
+      || payload?.TransactionId
+      || payload?.SCTransactionId
+      || payload?.paymentTransactionId
+      || payload?.txnId
+      || payload?.txn_id
       || payload?.id
       || order?.paymentId
       || '',
@@ -949,37 +966,42 @@ export class OrdersService implements OnModuleInit {
       };
     }
 
-    const draftToken = draftTokenFromMetadata;
-    if (!draftToken) {
-      throw new NotFoundException('Order not found for SkipCash webhook and no draft checkout token provided');
+    // We've already confirmed this webhook says "paid" from its status field. create()
+    // below independently re-derives paymentStatus from whether paymentId is truthy —
+    // if none of the field names above matched SkipCash's actual transaction-id field,
+    // paymentId would be '' and the order would be silently saved as "pending" despite
+    // the customer having actually paid. Never let a confirmed-paid webhook fall through
+    // that gap — fall back to the draft/order reference so it's always non-empty.
+    if (!paymentId) {
+      console.warn('[SkipCash Webhook] Paid webhook had no recognizable transaction id field — falling back to orderRef. Check the raw payload logged above.');
+      paymentId = orderRef || `skipcash_${Date.now()}`;
     }
 
-    let draftData: any;
-    try {
-      draftData = JSON.parse(Buffer.from(draftToken, 'base64').toString('utf8'));
-    } catch {
-      throw new BadRequestException('Invalid SkipCash draft checkout token');
-    }
-
-    if (!draftData?.userId || !draftData?.orderData) {
-      throw new BadRequestException('SkipCash draft checkout token is incomplete');
+    // SkipCash never actually receives or echoes back our full draft — see the comment
+    // in createSkipCashCheckoutSession. Look up what we stored ourselves, keyed by the
+    // draftReference SkipCash *does* reliably echo back (as transId/custom1).
+    const draft = await this.skipCashDraftModel.findOne({ draftReference: orderRef });
+    if (!draft) {
+      throw new NotFoundException(`Order not found for SkipCash webhook: no draft or existing order for reference "${orderRef}"`);
     }
 
     let created: any;
     try {
-      console.log('[SkipCash Webhook] Creating order from draft token for userId:', draftData.userId);
-      created = await this.create(draftData.userId, {
-        ...draftData.orderData,
+      console.log('[SkipCash Webhook] Creating order from stored draft for userId:', draft.userId);
+      created = await this.create(draft.userId, {
+        ...(draft.orderData as any),
         paymentMethod: 'skipcash',
         paymentId,
       });
       console.log('[SkipCash Webhook] Order created successfully:', created.order?.id || created.order?.orderNumber);
+      await this.skipCashDraftModel.deleteOne({ draftReference: orderRef }).catch(() => null);
     } catch (error: any) {
       console.error('[SkipCash Webhook] Order creation failed:', error.message);
       if (this.isDuplicatePaymentIdError(error) && paymentId) {
         const existing = await this.orderModel.findOne({ paymentId, paymentMethod: 'skipcash' });
         if (existing) {
           console.log('[SkipCash Webhook] Duplicate payment detected, returning existing order:', existing.orderNumber);
+          await this.skipCashDraftModel.deleteOne({ draftReference: orderRef }).catch(() => null);
           return {
             message: 'SkipCash webhook already processed',
             status: normalizedStatus,

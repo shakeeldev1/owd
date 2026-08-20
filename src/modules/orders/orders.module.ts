@@ -10,6 +10,7 @@ import { Product, ProductSchema } from '../products/schemas/product.schema';
 import { Cart, CartSchema } from '../cart/schemas/cart.schema';
 import { Settings, SettingsSchema } from '../settings/settings.schema';
 import { Offer, OfferSchema } from '../offers/schemas/offer.schema';
+import { SkipCashDraft, SkipCashDraftSchema } from './schemas/skipcash-draft.schema';
 import { AuthModule } from '../auth/auth.module';
 import { SMSModule } from '../sms/sms.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
@@ -26,6 +27,7 @@ import { MetaModule } from '../meta/meta.module';
       { name: Cart.name, schema: CartSchema },
       { name: Settings.name, schema: SettingsSchema },
       { name: Offer.name, schema: OfferSchema },
+      { name: SkipCashDraft.name, schema: SkipCashDraftSchema },
     ]),
     AuthModule,
     SMSModule,
