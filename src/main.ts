@@ -57,7 +57,6 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin, callback) => {
-      // Allow non-browser clients (no Origin header).
       if (!origin) {
         callback(null, true);
         return;
