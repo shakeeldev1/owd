@@ -713,8 +713,9 @@ export class ProductsService {
     const active = await this.productModel.countDocuments({ status: 'active' });
     const outOfStock = await this.productModel.countDocuments({ stock: 0, status: 'active' });
     const draft = await this.productModel.countDocuments({ status: 'draft' });
+    const archived = await this.productModel.countDocuments({ status: 'archived' });
 
-    return { totalProducts: total, activeProducts: active, outOfStock, draftProducts: draft };
+    return { totalProducts: total, activeProducts: active, outOfStock, draftProducts: draft, archivedProducts: archived };
   }
 
   async getRelated(slug: string, limit = 4) {
@@ -812,8 +813,8 @@ export class ProductsService {
   }
 
   // Admin: find all including draft/archived
-  async adminFindAll(query: { search?: string; status?: string; page?: number; limit?: number }) {
-    const { search, status, page = 1, limit = 10 } = query;
+  async adminFindAll(query: { search?: string; status?: string; category?: string; minPrice?: number; maxPrice?: number; page?: number; limit?: number }) {
+    const { search, status, category, minPrice, maxPrice, page = 1, limit = 10 } = query;
     const filter: any = {};
 
     if (search) {
@@ -824,6 +825,12 @@ export class ProductsService {
       ];
     }
     if (status) filter.status = status;
+    if (category) filter.category = category;
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      filter.price = {};
+      if (minPrice !== undefined) filter.price.$gte = Number(minPrice);
+      if (maxPrice !== undefined) filter.price.$lte = Number(maxPrice);
+    }
 
     const total = await this.productModel.countDocuments(filter);
     const products = await this.productModel

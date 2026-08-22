@@ -61,10 +61,13 @@ export class ProductsController {
   adminFindAll(
     @Query('search') search?: string,
     @Query('status') status?: string,
+    @Query('category') category?: string,
+    @Query('minPrice') minPrice?: number,
+    @Query('maxPrice') maxPrice?: number,
     @Query('page') page?: number,
     @Query('limit') limit?: number,
   ) {
-    return this.productsService.adminFindAll({ search, status, page, limit });
+    return this.productsService.adminFindAll({ search, status, category, minPrice, maxPrice, page, limit });
   }
 
   @Get('admin/export')
