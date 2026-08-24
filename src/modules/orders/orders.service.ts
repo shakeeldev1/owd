@@ -458,23 +458,28 @@ export class OrdersService implements OnModuleInit {
       return '';
     };
 
-    // Per SkipCash's webhook docs: sign PaymentId, Amount, StatusId, TransactionId, Custom1
-    // (in that order) as comma-separated Key=Value pairs — same HMAC pattern as payment
-    // creation, just this fixed field set instead of the full checkout field set.
-    const parts = [
-      `PaymentId=${field('PaymentId', 'paymentId')}`,
-      `Amount=${field('Amount', 'amount')}`,
-      `StatusId=${field('StatusId', 'statusId')}`,
-      `TransactionId=${field('TransactionId', 'transactionId')}`,
-      `Custom1=${field('Custom1', 'custom1')}`,
+    // Per SkipCash's webhook spec: sign the NON-EMPTY fields, in this exact order:
+    // PaymentId, Amount, StatusId, TransactionId, Custom1, VisaId — comma-separated
+    // Key=Value pairs, HMAC-SHA256 with the WebHook Key, Base64-encoded.
+    const orderedFields: [string, string][] = [
+      ['PaymentId', field('PaymentId', 'paymentId')],
+      ['Amount', field('Amount', 'amount')],
+      ['StatusId', field('StatusId', 'statusId')],
+      ['TransactionId', field('TransactionId', 'transactionId')],
+      ['Custom1', field('Custom1', 'custom1')],
+      ['VisaId', field('VisaId', 'visaId')],
     ];
-    const allFields = parts.join(',');
 
-    // Tolerate the "combine only non-empty fields" convention the payment-creation endpoint
-    // documents, in case the webhook signature follows the same rule.
-    const nonEmptyOnly = parts.filter((p) => !p.endsWith('=')).join(',');
+    const nonEmptyOnly = orderedFields
+      .filter(([, value]) => value !== '')
+      .map(([key, value]) => `${key}=${value}`)
+      .join(',');
 
-    return Array.from(new Set([allFields, nonEmptyOnly].filter(Boolean)));
+    // Kept as a fallback candidate only for tolerance with any older/other convention;
+    // the non-empty-only string above is the one the spec actually documents.
+    const allFields = orderedFields.map(([key, value]) => `${key}=${value}`).join(',');
+
+    return Array.from(new Set([nonEmptyOnly, allFields].filter(Boolean)));
   }
 
   // SkipCash's webhook Authorization header is an HMAC-SHA256 (base64) signature computed
