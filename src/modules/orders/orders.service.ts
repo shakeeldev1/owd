@@ -374,6 +374,8 @@ export class OrdersService implements OnModuleInit {
       || payload?.TransId
       || payload?.custom1
       || payload?.Custom1
+      || payload?.TransactionId
+      || payload?.transactionId
       || payload?.orderId
       || payload?.order_id
       || payload?.merchantOrderId
@@ -445,6 +447,80 @@ export class OrdersService implements OnModuleInit {
       .filter(Boolean);
 
     return Array.from(new Set([primary, ...additional].filter(Boolean)));
+  }
+
+  private buildSkipCashWebhookSignatureCandidates(payload: any): string[] {
+    const field = (...keys: string[]) => {
+      for (const key of keys) {
+        const value = payload?.[key];
+        if (value !== undefined && value !== null && value !== '') return String(value);
+      }
+      return '';
+    };
+
+    // Per SkipCash's webhook docs: sign PaymentId, Amount, StatusId, TransactionId, Custom1
+    // (in that order) as comma-separated Key=Value pairs — same HMAC pattern as payment
+    // creation, just this fixed field set instead of the full checkout field set.
+    const parts = [
+      `PaymentId=${field('PaymentId', 'paymentId')}`,
+      `Amount=${field('Amount', 'amount')}`,
+      `StatusId=${field('StatusId', 'statusId')}`,
+      `TransactionId=${field('TransactionId', 'transactionId')}`,
+      `Custom1=${field('Custom1', 'custom1')}`,
+    ];
+    const allFields = parts.join(',');
+
+    // Tolerate the "combine only non-empty fields" convention the payment-creation endpoint
+    // documents, in case the webhook signature follows the same rule.
+    const nonEmptyOnly = parts.filter((p) => !p.endsWith('=')).join(',');
+
+    return Array.from(new Set([allFields, nonEmptyOnly].filter(Boolean)));
+  }
+
+  // SkipCash's webhook Authorization header is an HMAC-SHA256 (base64) signature computed
+  // from the payload, NOT a literal shared-secret string — the portal's "webhook key" is the
+  // signing secret used to recompute and compare it. A previous implementation treated it as
+  // a literal value to string-match against incoming headers, which rejected every genuine
+  // SkipCash webhook call before payment status was ever read (the root cause of orders never
+  // being created after a successful payment).
+  private verifySkipCashWebhookSignature(payload: any, authorizationHeader?: string): boolean {
+    const providedSignature = this.normalizeWebhookKey(authorizationHeader);
+    if (!providedSignature) return false;
+
+    const secrets = Array.from(new Set([
+      ...this.getConfiguredWebhookKeys(),
+      ...this.getSkipCashSecrets(),
+    ]));
+    if (secrets.length === 0) return true; // no key configured — accept (local/dev fallback)
+
+    const candidates = this.buildSkipCashWebhookSignatureCandidates(payload);
+
+    for (const secret of secrets) {
+      for (const combinedData of candidates) {
+        try {
+          const hash = CryptoJS.HmacSHA256(combinedData, secret);
+          const computed = CryptoJS.enc.Base64.stringify(hash);
+          if (computed === providedSignature) return true;
+        } catch {
+          // try next candidate
+        }
+      }
+    }
+
+    return false;
+  }
+
+  // Maps SkipCash's numeric webhook StatusId to our paymentStatus values.
+  // 0 new, 1 pending, 2 paid, 3 canceled, 4 failed, 5 rejected, 6 refunded,
+  // 7 pending refund, 8 refund failed, 12 customer started payment process.
+  private mapSkipCashStatusId(statusId: any): 'paid' | 'failed' | 'pending' | 'refunded' | null {
+    if (statusId === undefined || statusId === null || statusId === '') return null;
+    const id = Number(statusId);
+    if (Number.isNaN(id)) return null;
+    if (id === 2) return 'paid';
+    if (id === 3 || id === 4 || id === 5) return 'failed';
+    if (id === 6 || id === 7 || id === 8) return 'refunded';
+    return 'pending';
   }
 
   private isPublicBackendUrl(value: string): boolean {
@@ -863,12 +939,11 @@ export class OrdersService implements OnModuleInit {
   }
 
   async processSkipCashWebhook(payload: any, webhookKeyHeader?: string) {
-    const expectedKeys = this.getConfiguredWebhookKeys();
-    const providedWebhookKey = this.normalizeWebhookKey(webhookKeyHeader);
-
-    if (expectedKeys.length > 0 && !expectedKeys.includes(providedWebhookKey)) {
-      console.warn('[SkipCash Webhook] Invalid webhook key provided');
-      throw new BadRequestException('Invalid SkipCash webhook key');
+    if (!this.verifySkipCashWebhookSignature(payload, webhookKeyHeader)) {
+      console.warn('[SkipCash Webhook] Signature verification failed', {
+        hasAuthHeader: Boolean(webhookKeyHeader),
+      });
+      throw new BadRequestException('Invalid SkipCash webhook signature');
     }
 
     const orderRef = this.extractSkipCashOrderRef(payload);
@@ -896,7 +971,8 @@ export class OrdersService implements OnModuleInit {
     }
 
     let paymentId = String(
-      payload?.paymentId
+      payload?.PaymentId
+      || payload?.paymentId
       || payload?.payment_id
       || payload?.transactionId
       || payload?.transaction_id
@@ -920,7 +996,11 @@ export class OrdersService implements OnModuleInit {
       || payload?.event
       || '',
     );
-    const normalizedStatus = this.normalizeSkipCashStatus(rawStatus);
+    // SkipCash's real webhook payload carries a numeric StatusId (2 = paid, etc.), not a
+    // string status field — prefer that mapping and fall back to string-matching only for
+    // other callers (tests/manual triggers) that pass a text status instead.
+    const statusIdMapped = this.mapSkipCashStatusId(payload?.StatusId ?? payload?.statusId);
+    const normalizedStatus = statusIdMapped || this.normalizeSkipCashStatus(rawStatus);
 
     if (paymentId && normalizedStatus === 'paid') {
       const existingByPaymentId = await this.orderModel.findOne({ paymentId, paymentMethod: 'skipcash' });
