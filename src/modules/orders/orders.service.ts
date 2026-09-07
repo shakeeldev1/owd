@@ -1483,15 +1483,9 @@ export class OrdersService implements OnModuleInit {
 
     const subtotal = dto.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const shippingCost = 0; // Shipping is always free
-    
-    // Check if this is a first order and apply 10% discount
-    const previousOrders = await this.orderModel.countDocuments({ user: userId });
+
     let discount = 0;
     let discountReason = '';
-    if (previousOrders === 0) {
-      discount = Math.round(subtotal * 0.1); // 10% first order discount
-      discountReason = 'First order discount (10%)';
-    }
 
     const coupon = await this.resolveOrderDiscount(dto.discountCode, subtotal);
     if (coupon.discount > 0) {
