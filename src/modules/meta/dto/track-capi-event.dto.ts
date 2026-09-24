@@ -7,7 +7,7 @@ export class MetaCapiUserDataDto {
 }
 
 export class TrackCapiEventDto {
-  @IsIn(['ViewContent', 'AddToCart', 'InitiateCheckout'])
+  @IsIn(['PageView', 'ViewContent', 'AddToCart', 'InitiateCheckout'])
   eventName!: string;
 
   @IsString() @IsNotEmpty() eventId!: string;

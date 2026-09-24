@@ -1425,17 +1425,31 @@ export class OrdersService implements OnModuleInit {
 
     let isNew = false;
     if (!user) {
-      const passwordHash = await bcrypt.hash(uuidv4(), 12);
-      user = await this.userModel.create({
-        fullName: name,
-        email,
-        phone,
-        password: passwordHash,
-        role: 'user',
-        isVerified: false,
-        address: '',
-      });
-      isNew = true;
+      try {
+        const passwordHash = await bcrypt.hash(uuidv4(), 12);
+        user = await this.userModel.create({
+          fullName: name,
+          email,
+          phone,
+          password: passwordHash,
+          role: 'user',
+          isVerified: false,
+          address: '',
+        });
+        isNew = true;
+      } catch (error: any) {
+        // Two near-simultaneous guest checkouts (e.g. a double-clicked "Place order"
+        // button) can both pass the findOne checks above before either create() commits.
+        // The loser hits a duplicate-key error on email/phone — fall back to the account
+        // the other request just created instead of failing the whole checkout with a 500.
+        if (error?.code === 11000) {
+          user = await this.userModel.findOne({ email });
+          if (!user) user = await this.userModel.findOne({ phone });
+          if (!user) throw error;
+        } else {
+          throw error;
+        }
+      }
     }
 
     await this.migrateGuestCartToUser(guestId, String(user._id));

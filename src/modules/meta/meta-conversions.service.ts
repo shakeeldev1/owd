@@ -20,6 +20,7 @@ export interface MetaCapiCustomData {
 }
 
 const ALLOWED_EVENT_NAMES = new Set([
+  'PageView',
   'ViewContent',
   'AddToCart',
   'InitiateCheckout',
