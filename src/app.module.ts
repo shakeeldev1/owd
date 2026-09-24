@@ -23,6 +23,7 @@ import { InventoryModule } from './modules/inventory/inventory.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { SectionsModule } from './modules/sections/sections.module';
 import { MetaModule } from './modules/meta/meta.module';
+import { CurrencyModule } from './modules/currency/currency.module';
 
 @Module({
   imports: [
@@ -65,6 +66,7 @@ import { MetaModule } from './modules/meta/meta.module';
     InventoryModule,
     SettingsModule,
     MetaModule,
+    CurrencyModule,
   ],
   controllers: [AppController],
   providers: [AppService],

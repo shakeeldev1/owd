@@ -8,6 +8,10 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  // Needed so req.ip resolves the real visitor IP (from X-Forwarded-For) instead of
+  // the reverse proxy's own address — used for IP-based currency/country detection.
+  app.set('trust proxy', true);
+
   const configService = app.get(ConfigService);
 
   // Global validation
