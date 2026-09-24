@@ -99,6 +99,9 @@ export class CreateProductDto {
 
   @IsOptional()
   offerEndDate?: Date | null;
+
+  @IsString() @IsOptional()
+  offerLabel?: string;
 }
 
 export class UpdateProductDto {
@@ -135,6 +138,7 @@ export class UpdateProductDto {
   @IsNumber() @IsOptional() offerDiscountPercent?: number;
   @IsOptional() offerStartDate?: Date | null;
   @IsOptional() offerEndDate?: Date | null;
+  @IsString() @IsOptional() offerLabel?: string;
 }
 
 export class AddProductReviewDto {

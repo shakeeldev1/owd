@@ -147,6 +147,11 @@ export class Product {
 
   @Prop({ type: Date, default: null })
   offerEndDate: Date | null;
+
+  // Optional campaign name shown as its own badge next to the discount badge
+  // (e.g. "Arabian Nights"). Empty/unset means no named-campaign badge.
+  @Prop({ default: '' })
+  offerLabel: string;
 }
 
 export const ProductSchema = SchemaFactory.createForClass(Product);
