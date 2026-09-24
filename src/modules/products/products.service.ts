@@ -262,13 +262,18 @@ export class ProductsService {
     if (filter === 'limited') mongoFilter.isLimitedEdition = true;
 
     if (filter === 'sale') {
+      // Matches either discount mechanism: the newer isOnOffer/offerPrice system (used by
+      // scheduled promotions like the Expo sale) or the legacy originalPrice > price flag.
       mongoFilter.$and = [
         ...(mongoFilter.$and || []),
         {
-          originalPrice: { $exists: true, $gt: 0 },
-        },
-        {
-          $expr: { $gt: ['$originalPrice', '$price'] },
+          $or: [
+            { isOnOffer: true },
+            {
+              originalPrice: { $exists: true, $gt: 0 },
+              $expr: { $gt: ['$originalPrice', '$price'] },
+            },
+          ],
         },
       ];
     }
