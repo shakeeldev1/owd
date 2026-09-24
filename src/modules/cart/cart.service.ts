@@ -18,31 +18,28 @@ export class CartService {
     @InjectModel(Product.name) private productModel: Model<ProductDocument>,
   ) {}
 
-  private toDateOnlyString(value?: string | Date | null): string | null {
-    if (!value) return null;
-
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) return null;
-
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-
-    return `${year}-${month}-${day}`;
-  }
-
+  // Compares raw timestamps, not local calendar dates, so an offer starts/ends at the same
+  // real-world moment regardless of the server process's own configured timezone (which
+  // previously made this depend on wherever the server happened to be deployed/configured,
+  // rather than the fixed Doha-time instant actually stored in offerStartDate/offerEndDate).
   private isOfferActiveForDate(
     offerStartDate?: string | Date | null,
     offerEndDate?: string | Date | null,
     referenceDate: Date = new Date(),
   ) {
-    const today = this.toDateOnlyString(referenceDate);
-    const startDate = this.toDateOnlyString(offerStartDate);
-    const endDate = this.toDateOnlyString(offerEndDate);
+    const now = referenceDate.getTime();
+    if (Number.isNaN(now)) return false;
 
-    if (!today) return false;
-    if (startDate && startDate > today) return false;
-    if (endDate && endDate < today) return false;
+    if (offerStartDate) {
+      const start = offerStartDate instanceof Date ? offerStartDate : new Date(offerStartDate);
+      if (!Number.isNaN(start.getTime()) && now < start.getTime()) return false;
+    }
+
+    if (offerEndDate) {
+      const end = offerEndDate instanceof Date ? offerEndDate : new Date(offerEndDate);
+      if (!Number.isNaN(end.getTime()) && now > end.getTime()) return false;
+    }
+
     return true;
   }
 
@@ -65,7 +62,8 @@ export class CartService {
       && offerPrice < regularPrice;
 
     if (hasActiveOffer) {
-      const effectiveOfferPrice = Math.round(offerPrice * 100) / 100;
+      // Prices must be whole numbers (client requirement), so floor rather than round to cents.
+      const effectiveOfferPrice = Math.floor(offerPrice);
       return {
         price: effectiveOfferPrice,
         originalPrice: regularPrice,
@@ -79,7 +77,7 @@ export class CartService {
     return {
       price: regularPrice,
       originalPrice: Number(product?.originalPrice || 0) > regularPrice ? Number(product.originalPrice) : undefined,
-      offerPrice: offerPrice > 0 && offerPrice < regularPrice ? Math.round(offerPrice * 100) / 100 : undefined,
+      offerPrice: offerPrice > 0 && offerPrice < regularPrice ? Math.floor(offerPrice) : undefined,
       offerDiscountPercent: Number(product?.offerDiscountPercent || 0) > 0 ? Number(product.offerDiscountPercent) : undefined,
       isOnOffer: false,
       unit,

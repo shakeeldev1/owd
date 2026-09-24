@@ -58,7 +58,7 @@ export class ProductsService {
     let offerPrice = Number.isFinite(explicitOfferPrice) && explicitOfferPrice > 0 ? explicitOfferPrice : NaN;
 
     if (!Number.isFinite(offerPrice) && Number.isFinite(discountPercent) && discountPercent > 0 && price > 0) {
-      offerPrice = Math.round((price * (1 - discountPercent / 100)) * 100) / 100;
+      offerPrice = Math.floor(price * (1 - discountPercent / 100));
     }
 
     if (!Number.isFinite(offerPrice) || offerPrice <= 0) {
@@ -69,7 +69,9 @@ export class ProductsService {
       throw new BadRequestException('Offer price must be lower than the regular price');
     }
 
-    next.offerPrice = Math.round(offerPrice * 100) / 100;
+    // Client requirement: prices must never carry decimals (e.g. 98.87 -> 98, not 99),
+    // so offer prices are always floored to a whole number, not rounded to the nearest cent.
+    next.offerPrice = Math.floor(offerPrice);
 
     if (!Number.isFinite(Number(next.offerDiscountPercent)) || Number(next.offerDiscountPercent) <= 0) {
       next.offerDiscountPercent = price > 0 ? Math.round(((price - next.offerPrice) / price) * 100) : 0;
