@@ -856,6 +856,9 @@ export class ProductsService {
 
   // ─── Public formatter: hides stock, adds isAvailable ───
   private formatPublicProduct(p: ProductDocument) {
+    const publicBadge = p.slug === 'malysia-munasabat' ? '' : p.badge;
+    const publicBadgeAr = p.slug === 'malysia-munasabat' ? '' : p.badgeAr;
+
     return {
       _id: p._id,
       id: p._id,
@@ -891,8 +894,8 @@ export class ProductsService {
         verified: review.verified,
         helpful: review.helpful,
       })),
-      badge: p.badge,
-      badgeAr: p.badgeAr,
+      badge: publicBadge,
+      badgeAr: publicBadgeAr,
       isNew: (p as any).isNewArrival ?? (p as any).isNew ?? false,
       isNewArrival: (p as any).isNewArrival ?? (p as any).isNew ?? false,
       isBestseller: p.isBestseller,
