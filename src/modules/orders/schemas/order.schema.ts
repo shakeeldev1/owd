@@ -147,6 +147,9 @@ export class Order {
   @Prop({ default: '' })
   metaEventId!: string;
 
+  @Prop({ type: Date })
+  metaPurchaseSentAt?: Date;
+
   // Delivery assignment
   @Prop({ type: Types.ObjectId, ref: 'User' })
   deliveryStaff!: Types.ObjectId;

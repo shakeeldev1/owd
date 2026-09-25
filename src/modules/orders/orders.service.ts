@@ -1712,7 +1712,23 @@ export class OrdersService implements OnModuleInit {
       this.logWhatsAppFailure('new order alert', order.orderNumber);
     }
 
-    this.metaConversionsService.sendPurchaseEvent(order, requestContext).catch(() => null);
+    this.orderModel.findOneAndUpdate(
+      {
+        _id: order._id,
+        $or: [
+          { metaPurchaseSentAt: { $exists: false } },
+          { metaPurchaseSentAt: null },
+        ],
+      },
+      { $set: { metaPurchaseSentAt: new Date() } },
+      { new: true },
+    ).then((claimedOrder) => {
+      if (!claimedOrder) {
+        console.warn('[Meta CAPI] Purchase already claimed:', order.metaEventId);
+        return;
+      }
+      return this.metaConversionsService.sendPurchaseEvent(claimedOrder, requestContext);
+    }).catch(() => null);
 
     return { message: 'Order created', order: this.formatOrder(order) };
   }
