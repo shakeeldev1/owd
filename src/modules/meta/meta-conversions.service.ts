@@ -49,6 +49,12 @@ export class MetaConversionsService {
     return crypto.createHash('sha256').update(normalized).digest('hex');
   }
 
+  private hashPhone(value?: string): string | undefined {
+    const normalized = (value || '').replace(/\D/g, '');
+    if (!normalized) return undefined;
+    return crypto.createHash('sha256').update(normalized).digest('hex');
+  }
+
   async sendEvent(params: {
     eventName: string;
     eventId: string;
@@ -62,7 +68,7 @@ export class MetaConversionsService {
     if (!this.isConfigured) return;
 
     const hashedEmail = this.hash(params.userData?.email);
-    const hashedPhone = this.hash(params.userData?.phone);
+    const hashedPhone = this.hashPhone(params.userData?.phone);
 
     const body = {
       data: [
@@ -83,6 +89,10 @@ export class MetaConversionsService {
         },
       ],
     };
+
+    if (params.eventName === 'Purchase') {
+      console.info('[Meta CAPI] Purchase payload:', JSON.stringify(body));
+    }
 
     try {
       const response = await fetch(
