@@ -24,6 +24,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { SectionsModule } from './modules/sections/sections.module';
 import { MetaModule } from './modules/meta/meta.module';
 import { CurrencyModule } from './modules/currency/currency.module';
+import { TikTokModule } from './modules/tiktok/tiktok.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { CurrencyModule } from './modules/currency/currency.module';
     SettingsModule,
     MetaModule,
     CurrencyModule,
+    TikTokModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -15,6 +15,7 @@ import { AuthModule } from '../auth/auth.module';
 import { SMSModule } from '../sms/sms.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { MetaModule } from '../meta/meta.module';
+import { TikTokModule } from '../tiktok/tiktok.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { MetaModule } from '../meta/meta.module';
     SMSModule,
     LoyaltyModule,
     MetaModule,
+    TikTokModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

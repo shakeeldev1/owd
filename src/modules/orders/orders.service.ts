@@ -31,6 +31,7 @@ import { MailService } from '../auth/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { MetaConversionsService } from '../meta/meta-conversions.service';
+import { TikTokService } from '../tiktok/tiktok.service';
 import { AuthService } from '../auth/auth.service';
 import { convertToGrams } from '../../utils/unitConversion';
 import { normalizePhone } from '../../utils/phone';
@@ -57,6 +58,7 @@ export class OrdersService implements OnModuleInit {
     private notificationsService: NotificationsService,
     private loyaltyService: LoyaltyService,
     private metaConversionsService: MetaConversionsService,
+    private tikTokService: TikTokService,
     private authService: AuthService,
   ) {}
 
@@ -1727,7 +1729,10 @@ export class OrdersService implements OnModuleInit {
         console.warn('[Meta CAPI] Purchase already claimed:', order.metaEventId);
         return;
       }
-      return this.metaConversionsService.sendPurchaseEvent(claimedOrder, requestContext);
+      return Promise.all([
+        this.metaConversionsService.sendPurchaseEvent(claimedOrder, requestContext),
+        this.tikTokService.sendPurchaseEvent(claimedOrder, requestContext),
+      ]);
     }).catch(() => null);
 
     return { message: 'Order created', order: this.formatOrder(order) };
