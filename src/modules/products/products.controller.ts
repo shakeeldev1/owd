@@ -70,6 +70,12 @@ export class ProductsController {
     return this.productsService.adminFindAll({ search, status, category, minPrice, maxPrice, page, limit });
   }
 
+  // Public scheduled feed consumed by Meta Commerce Manager.
+  @Get('catalog/meta.xml')
+  getMetaCatalogFeed(@Res() res: any) {
+    return this.productsService.getMetaCatalogFeed(res);
+  }
+
   @Get('admin/export')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('admin', 'staff')

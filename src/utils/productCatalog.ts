@@ -32,3 +32,8 @@ export function buildProductUrl(
   const categorySegment = product.categorySlug || generatePathSegment(product.categoryName);
   return `${baseUrl}/shop/${categorySegment ? `${categorySegment}/` : ''}${product.slug || ''}`;
 }
+
+export function getCatalogProductId(product: { _id?: unknown; sku?: string }): string {
+  const sku = String(product.sku || '').trim();
+  return sku || String(product._id || '').trim();
+}

@@ -7,7 +7,7 @@ import { CreateProductDto, UpdateProductDto, AddProductReviewDto } from './dto/p
 import { Category, CategoryDocument } from '../categories/schemas/category.schema';
 import * as XLSX from 'xlsx';
 import { UNIT_CONVERSION_FACTORS, convertToGrams } from '../../utils/unitConversion';
-import { normalizeCategoryName, buildProductUrl } from '../../utils/productCatalog';
+import { normalizeCategoryName, buildProductUrl, getCatalogProductId } from '../../utils/productCatalog';
 
 @Injectable()
 export class ProductsService {
@@ -420,9 +420,10 @@ export class ProductsService {
       
       // Product ID: the same identifier sent as content_ids to Meta Pixel/CAPI, so the
       // catalog feed and ad events always match on the same value.
+      const catalogId = getCatalogProductId(p);
       const row = [
-        String(p.sku || ''),
-        String(p.sku || ''),
+        catalogId,
+        catalogId,
         String(p.name || ''),
         String(p.nameAr || ''),
         normalizeCategoryName(p.categoryName),
@@ -495,6 +496,71 @@ export class ProductsService {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=products-export-${date}.xlsx`);
     return res.send(buffer);
+  }
+
+  async getMetaCatalogFeed(res: any) {
+    const frontendUrl = this.configService.get<string>('FRONTEND_URL', 'https://oudalzubarah.com').replace(/\/+$/, '');
+    const products = await this.productModel
+      .find({ status: 'active', stock: { $gt: 0 } })
+      .select('name description price originalPrice offerPrice offerStartDate offerEndDate isOnOffer sku _id slug categorySlug categoryName image brand')
+      .sort({ sku: 1, _id: 1 })
+      .lean();
+
+    const escapeXml = (value: unknown) => String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+
+    const seenIds = new Set<string>();
+    const items: string[] = [];
+    for (const product of products) {
+      const id = getCatalogProductId(product);
+      if (!id || seenIds.has(id)) {
+        console.error(`[Meta Catalog] Skipping duplicate or missing product ID: ${id || String(product._id)}`);
+        continue;
+      }
+      seenIds.add(id);
+
+      const productUrl = buildProductUrl(frontendUrl, product);
+      const imageUrl = String(product.image || '').trim();
+      const isOfferActive = product.isOnOffer === true
+        && Number(product.offerPrice) > 0
+        && (!product.offerStartDate || new Date(product.offerStartDate).getTime() <= Date.now())
+        && (!product.offerEndDate || new Date(product.offerEndDate).getTime() >= Date.now());
+      const price = Number(product.price) || 0;
+      const salePrice = isOfferActive ? Number(product.offerPrice) : 0;
+      const priceText = `${price.toFixed(2)} QAR`;
+      const salePriceText = salePrice > 0 ? `${salePrice.toFixed(2)} QAR` : '';
+
+      items.push(`
+      <item>
+        <g:id>${escapeXml(id)}</g:id>
+        <g:title>${escapeXml(product.name)}</g:title>
+        <g:description>${escapeXml(product.description || product.name)}</g:description>
+        <g:link>${escapeXml(productUrl)}</g:link>
+        <g:image_link>${escapeXml(imageUrl)}</g:image_link>
+        <g:availability>in stock</g:availability>
+        <g:price>${escapeXml(priceText)}</g:price>
+        ${salePriceText ? `<g:sale_price>${escapeXml(salePriceText)}</g:sale_price>` : ''}
+        <g:condition>new</g:condition>
+        <g:brand>Oud Al Zubarah</g:brand>
+      </item>`);
+    }
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
+  <channel>
+    <title>Oud Al Zubarah Product Catalog</title>
+    <link>${escapeXml(frontendUrl)}</link>
+    <description>Active and in-stock Oud Al Zubarah products</description>${items.join('')}
+  </channel>
+</rss>`;
+
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300, s-maxage=300');
+    return res.send(xml);
   }
 
   async generateTemplateExcel(res: any) {
@@ -862,6 +928,7 @@ export class ProductsService {
     return {
       _id: p._id,
       id: p._id,
+      sku: p.sku,
       name: p.name,
       nameAr: p.nameAr,
       description: p.description,

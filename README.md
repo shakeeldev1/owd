@@ -59,6 +59,17 @@ $ npm run test:cov
 
 ## Deployment
 
+### Meta catalog feed
+
+The live product feed is available at:
+
+`https://api.oudalzubarah.com/api/products/catalog/meta.xml`
+
+Configure Meta Commerce Manager to fetch this URL on a schedule. The feed uses the
+same SKU-based `g:id` sent by the website events, includes only active products with
+stock greater than zero, and excludes archived or unavailable products. Do not use
+the old manually uploaded catalog export after enabling the scheduled feed.
+
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 
 If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
